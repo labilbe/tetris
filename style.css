@@ -107,6 +107,9 @@ kbd {
   text-align: center;
 }
 
+/* display: flex ci-dessus l'emporterait sur le style navigateur de [hidden]. */
+.overlay[hidden] { display: none; }
+
 .overlay p {
   margin: 0;
   font-size: 28px;
