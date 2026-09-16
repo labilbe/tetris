@@ -9,7 +9,7 @@ Le moteur de jeu est **pur et déterministe** : il n'accède ni au DOM, ni à l'
 Le projet utilise des modules ES : il faut le servir en HTTP, un double-clic sur `index.html` ne suffit pas.
 
 ```bash
-npm start          # sert le dossier sur http://localhost:3000
+npm start          # sert le dossier sur http://localhost:1984
 ```
 
 ## Tester
