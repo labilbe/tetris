@@ -75,6 +75,26 @@ button {
 
 button:hover { filter: brightness(1.1); }
 
+.option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: -8px;
+  font-size: 13px;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.option input {
+  accent-color: var(--accent);
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+}
+
+.option:hover { color: var(--text); }
+
 .help ul {
   margin: 0;
   padding: 0;

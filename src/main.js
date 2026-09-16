@@ -26,6 +26,29 @@ const hud = createHud({
 
 const transport = createLocalTransport();
 
+const ghostCheckbox = document.getElementById('ghost');
+const GHOST_PREFERENCE = 'tetris.ghost';
+
+/** La preference d'affichage est locale au navigateur, jamais dans l'etat de jeu. */
+function loadGhostPreference() {
+  try {
+    return localStorage.getItem(GHOST_PREFERENCE) === 'true';
+  } catch {
+    return false; // navigation privee, stockage bloque : on retombe sur le defaut
+  }
+}
+
+function setGhostVisible(visible) {
+  renderer.setGhostVisible(visible);
+  ghostCheckbox.checked = visible;
+  try {
+    localStorage.setItem(GHOST_PREFERENCE, String(visible));
+  } catch {
+    // Le reglage marche quand meme, il ne survivra juste pas au rechargement.
+  }
+  render();
+}
+
 /** @type {import('./engine/state.js').GameState} */
 let state;
 let lastTime = null;
@@ -41,6 +64,7 @@ transport.onAction((action) => {
 });
 
 function render() {
+  if (!state) return; // avant le demarrage du transport, il n'y a rien a dessiner
   renderer.draw(state);
   hud.update(state);
 }
@@ -65,7 +89,18 @@ document.addEventListener('visibilitychange', () => {
 document.getElementById('toggle').addEventListener('click', () => dispatch({ type: 'togglePause' }));
 document.getElementById('restart').addEventListener('click', () => dispatch({ type: 'reset', seed: randomSeed() }));
 
-createKeyboardInput(dispatch);
+ghostCheckbox.addEventListener('change', () => setGhostVisible(ghostCheckbox.checked));
+
+createKeyboardInput({
+  onGameAction: dispatch,
+  // Les actions d'affichage restent ici : les envoyer au transport les
+  // diffuserait aux autres joueurs, ce qui n'aurait aucun sens.
+  onViewAction: (action) => {
+    if (action.type === 'toggleGhost') setGhostVisible(!renderer.isGhostVisible());
+  },
+});
+
+setGhostVisible(loadGhostPreference());
 
 const { seed } = await transport.start();
 state = createState(seed);

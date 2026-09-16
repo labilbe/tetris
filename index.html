@@ -25,6 +25,13 @@
 
       <button id="toggle" type="button">Pause</button>
 
+      <label class="option">
+        <!-- autocomplete=off : sinon Chrome restaure l'etat coche de la case au
+             rechargement et ecrase la preference relue depuis localStorage. -->
+        <input type="checkbox" id="ghost" autocomplete="off">
+        <span>Projection</span>
+      </label>
+
       <section class="help">
         <h2>Commandes</h2>
         <ul>
@@ -33,6 +40,7 @@
           <li><kbd>↑</kbd> rotation</li>
           <li><kbd>Espace</kbd> chute rapide</li>
           <li><kbd>P</kbd> pause</li>
+          <li><kbd>G</kbd> projection</li>
         </ul>
       </section>
     </aside>

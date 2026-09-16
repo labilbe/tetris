@@ -27,6 +27,7 @@ npm test           # tests du moteur, sans navigateur
 | ↑ | Rotation |
 | Espace | Chute rapide (+2 points par ligne parcourue) |
 | P | Pause |
+| G | Afficher / masquer la projection d'atterrissage (masquée par défaut) |
 
 ## Règles
 
@@ -34,7 +35,7 @@ npm test           # tests du moteur, sans navigateur
 - Distribution en « sac de 7 » : chaque pièce sort une fois par cycle.
 - Score par lignes effacées simultanément : 100 / 300 / 500 / 800, multiplié par le niveau.
 - Le niveau augmente toutes les 10 lignes et accélère la descente.
-- Une projection translucide indique où la pièce va atterrir.
+- Une projection translucide peut indiquer où la pièce va atterrir : masquée par défaut, elle s'active avec `G` ou la case « Projection », et le choix est mémorisé par le navigateur.
 
 ## Architecture
 

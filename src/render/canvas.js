@@ -43,6 +43,10 @@ export function createRenderer({ board, next }) {
   const boardCtx = board.getContext('2d');
   const nextCtx = next.getContext('2d');
 
+  // Preference d'affichage, pas un etat de jeu : elle reste locale au joueur
+  // et ne passe donc jamais par le moteur ni par le reseau.
+  let ghostVisible = false;
+
   function drawBoard(state) {
     boardCtx.clearRect(0, 0, board.width, board.height);
     drawGridLines(boardCtx);
@@ -55,7 +59,7 @@ export function createRenderer({ board, next }) {
 
     const piece = state.current;
 
-    if (state.status !== STATUS.OVER) {
+    if (ghostVisible && state.status !== STATUS.OVER) {
       const gy = ghostRow(state);
       boardCtx.globalAlpha = GHOST_ALPHA;
       piece.cells.forEach((row, y) => {
@@ -97,6 +101,15 @@ export function createRenderer({ board, next }) {
     draw(state) {
       drawBoard(state);
       drawNext(state);
+    },
+
+    /** Affiche ou masque la projection d'atterrissage. */
+    setGhostVisible(visible) {
+      ghostVisible = visible;
+    },
+
+    isGhostVisible() {
+      return ghostVisible;
     },
   };
 }
