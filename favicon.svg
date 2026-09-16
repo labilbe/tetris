@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <title>Tetris</title>
+  <!--
+    Une seule piece S, en gros. Une favicon se joue a 16px : a cette taille
+    chaque case ne fait plus que 5px, donc quatre cases larges et une seule
+    couleur passent, la ou une grille complete du plateau deviendrait illisible.
+    La forme en escalier reste reconnaissable la ou un carre plein ne dirait rien.
+  -->
+  <rect width="32" height="32" rx="6" fill="#1c1e29"/>
+
+  <g fill="#4ad9e4" stroke="#1c1e29" stroke-width="1.5">
+    <rect x="12" y="8" width="8" height="8"/>
+    <rect x="20" y="8" width="8" height="8"/>
+    <rect x="4" y="16" width="8" height="8"/>
+    <rect x="12" y="16" width="8" height="8"/>
+  </g>
+</svg>
