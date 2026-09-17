@@ -12,6 +12,27 @@ Le projet utilise des modules ES : il faut le servir en HTTP, un double-clic sur
 npm start          # sert le dossier sur http://localhost:1984
 ```
 
+### Depuis le réseau local
+
+Le serveur écoute sur toutes les interfaces (`0.0.0.0`), pas seulement sur localhost : les autres machines du réseau peuvent donc ouvrir le jeu directement, sans rien changer au lancement.
+
+Il suffit de remplacer `localhost` par l'adresse de la machine qui sert le jeu, par exemple `http://192.168.66.12:1984`. Pour retrouver cette adresse :
+
+```powershell
+Get-NetIPAddress -AddressFamily IPv4 |
+  Where-Object { $_.PrefixOrigin -eq 'Dhcp' } |
+  Select-Object IPAddress, InterfaceAlias
+```
+
+Si la connexion est refusée depuis une autre machine, c'est le pare-feu Windows : ses règles pour Node.js doivent couvrir le profil du réseau utilisé (Domain, Private ou Public). Pour ouvrir explicitement ce seul port, dans un terminal **administrateur** :
+
+```powershell
+New-NetFirewallRule -DisplayName "Tetris (port 1984)" -Direction Inbound `
+  -Protocol TCP -LocalPort 1984 -Action Allow -Profile Domain,Private
+```
+
+Le jeu étant entièrement local au navigateur, chaque machine joue sa propre partie : la page partagée ne fait pas encore un jeu partagé — c'est l'objet du multijoueur.
+
 ## Tester
 
 ```bash
