@@ -32,6 +32,7 @@ const music = createMusic();
 
 const ghostCheckbox = document.getElementById('ghost');
 const musicCheckbox = document.getElementById('music');
+const musicStatus = document.getElementById('music-status');
 
 const GHOST_PREFERENCE = 'tetris.ghost';
 const MUSIC_PREFERENCE = 'tetris.music';
@@ -47,6 +48,31 @@ function setMusicEnabled(enabled) {
   music.setEnabled(enabled);
   musicCheckbox.checked = enabled;
   writePreference(MUSIC_PREFERENCE, enabled);
+  updateMusicStatus();
+}
+
+/**
+ * Affiche l'etat du son quand il ne joue pas. Un navigateur qui bloque l'audio
+ * le fait silencieusement : sans ce retour, le blocage est indiscernable d'un
+ * bug, aussi bien pour le joueur que pour le diagnostic.
+ */
+function updateMusicStatus() {
+  const status = music.getStatus();
+  let text = '';
+
+  if (status.enabled && !status.scheduling) {
+    if (status.contextState === 'running' && status.notes === 0) {
+      text = 'Chargement de la musique…';
+    } else if (status.contextState !== 'running') {
+      text = `▶ Cliquez ici pour activer le son (audio : ${status.contextState}, gestes : ${status.gestures})`;
+    }
+  }
+
+  if (status.lastError) text += ` [${status.lastError}]`;
+
+  if (text === musicStatus.textContent) return;
+  musicStatus.textContent = text;
+  musicStatus.hidden = text === '';
 }
 
 /** @type {import('./engine/state.js').GameState} */
@@ -68,6 +94,7 @@ function render() {
   renderer.draw(state);
   hud.update(state);
   music.sync(state);
+  updateMusicStatus();
 }
 
 function loop(time) {
@@ -92,6 +119,13 @@ document.getElementById('restart').addEventListener('click', () => dispatch({ ty
 
 ghostCheckbox.addEventListener('change', () => setGhostVisible(ghostCheckbox.checked));
 musicCheckbox.addEventListener('change', () => setMusicEnabled(musicCheckbox.checked));
+
+// Deblocage explicite : le clic est le geste que les navigateurs acceptent le
+// plus surement pour autoriser l'audio.
+musicStatus.addEventListener('click', () => {
+  music.unlock();
+  updateMusicStatus();
+});
 
 createKeyboardInput({
   onGameAction: dispatch,
