@@ -106,6 +106,6 @@ Le lecteur MIDI ne dépend pas du navigateur : il tourne aussi sous Node, ce qui
 
 La musique tourne en boucle pendant la partie et s'arrête en même temps que le jeu. On la coupe avec `M` ou la case « Musique » ; le choix est mémorisé.
 
-Elle est active par défaut. Les navigateurs interdisent de lancer du son avant un geste de l'utilisateur : c'est le rôle du menu de démarrage — le clic sur « Partie solo » est ce geste, et la musique part donc en même temps que la partie. Si le son reste bloqué malgré tout, une ligne cliquable apparaît sous la case « Musique » pour le débloquer.
+Elle est active par défaut. Les navigateurs interdisent de lancer du son avant un geste de l'utilisateur : c'est le rôle du menu de démarrage — le clic sur « Partie solo » est ce geste, et la musique part donc en même temps que la partie.
 
 Pour changer de morceau, il suffit de remplacer `assets/korobeiniki.mid` par un autre fichier MIDI (ou de passer `src` à `createMusic`).

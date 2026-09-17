@@ -53,9 +53,6 @@ export function createMusic({ src = 'assets/korobeiniki.mid', volume = 0.5 } = {
   let loopStart = 0; // date de debut du passage en cours, dans l'horloge audio
   let cursor = 0; // prochaine note a programmer
 
-  let lastError = null;
-  let gestures = 0; // gestes vus depuis le chargement, pour le diagnostic
-
   function loadSong() {
     if (song) return Promise.resolve(song);
     if (!loading) {
@@ -187,18 +184,12 @@ export function createMusic({ src = 'assets/korobeiniki.mid', volume = 0.5 } = {
    * notes) se fait ensuite, une fois le son autorise.
    */
   function onGesture() {
-    gestures++;
     ensureContext();
-    context.resume().then(
-      () => {
-        if (context.state !== 'running') return; // toujours refuse : on reste arme
-        disarm();
-        apply();
-      },
-      (error) => {
-        lastError = `resume: ${error.message}`;
-      },
-    );
+    context.resume().then(() => {
+      if (context.state !== 'running') return; // toujours refuse : on reste arme
+      disarm();
+      apply();
+    });
   }
 
   function arm() {
@@ -252,36 +243,13 @@ export function createMusic({ src = 'assets/korobeiniki.mid', volume = 0.5 } = {
      * le chemin que les navigateurs acceptent le plus surement.
      */
     unlock() {
-      gestures++;
       ensureContext();
-      context.resume().then(
-        () => {
-          if (context.state === 'running') {
-            disarm();
-            apply();
-          }
-        },
-        (error) => {
-          lastError = `resume: ${error.message}`;
-        },
-      );
-    },
-
-    /**
-     * Etat interne, affiche dans la page quand le son ne part pas : sans cela,
-     * un blocage du navigateur est indiscernable d'un bug du code.
-     */
-    getStatus() {
-      return {
-        enabled,
-        wanted,
-        armed,
-        gestures,
-        contextState: context ? context.state : 'absent',
-        notes: song ? song.notes.length : 0,
-        scheduling: timer !== null,
-        lastError,
-      };
+      context.resume().then(() => {
+        if (context.state === 'running') {
+          disarm();
+          apply();
+        }
+      });
     },
 
     /**

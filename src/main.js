@@ -30,7 +30,6 @@ const music = createMusic();
 
 const ghostCheckbox = document.getElementById('ghost');
 const musicCheckbox = document.getElementById('music');
-const musicStatus = document.getElementById('music-status');
 const menu = document.getElementById('menu');
 
 const GHOST_PREFERENCE = 'tetris.ghost';
@@ -47,35 +46,6 @@ function setMusicEnabled(enabled) {
   music.setEnabled(enabled);
   musicCheckbox.checked = enabled;
   writePreference(MUSIC_PREFERENCE, enabled);
-  updateMusicStatus();
-}
-
-/**
- * Affiche l'etat du son quand il ne joue pas. Un navigateur qui bloque l'audio
- * le fait silencieusement : sans ce retour, le blocage est indiscernable d'un
- * bug, aussi bien pour le joueur que pour le diagnostic.
- */
-function updateMusicStatus() {
-  const status = music.getStatus();
-  let text = '';
-
-  // Rien a signaler tant qu'on est au menu : le son n'y est pas encore attendu,
-  // et le message serait de toute facon cache derriere le menu.
-  if (started && status.enabled && !status.scheduling) {
-    if (status.contextState === 'running' && status.notes === 0) {
-      text = 'Chargement de la musique…';
-    } else if (status.contextState !== 'running') {
-      // Le navigateur exige un geste avant d'autoriser le son : sans ce
-      // message, le silence initial passe pour une panne.
-      text = '▶ Appuyez sur une touche, ou cliquez ici, pour activer le son';
-    }
-  }
-
-  if (status.lastError) text += ` (${status.lastError})`;
-
-  if (text === musicStatus.textContent) return;
-  musicStatus.textContent = text;
-  musicStatus.hidden = text === '';
 }
 
 /** @type {import('./engine/state.js').GameState} */
@@ -84,7 +54,6 @@ let state;
 let transport = null;
 let lastTime = null;
 let looping = false;
-let started = false; // une partie a-t-elle ete lancee depuis le menu
 
 /** Envoie une action : en reseau elle repassera par le serveur avant d'etre appliquee. */
 function dispatch(action) {
@@ -97,7 +66,6 @@ function render() {
   renderer.draw(state);
   hud.update(state);
   music.sync(state);
-  updateMusicStatus();
 }
 
 function loop(time) {
@@ -124,7 +92,6 @@ async function startGame(mode) {
   music.unlock();
 
   menu.hidden = true;
-  started = true;
 
   // Le mode choisit le transport, et rien d'autre : le reste du jeu ignore
   // s'il joue en solo ou en reseau.
@@ -156,13 +123,6 @@ document.getElementById('restart').addEventListener('click', () => dispatch({ ty
 
 ghostCheckbox.addEventListener('change', () => setGhostVisible(ghostCheckbox.checked));
 musicCheckbox.addEventListener('change', () => setMusicEnabled(musicCheckbox.checked));
-
-// Deblocage explicite : le clic est le geste que les navigateurs acceptent le
-// plus surement pour autoriser l'audio.
-musicStatus.addEventListener('click', () => {
-  music.unlock();
-  updateMusicStatus();
-});
 
 createKeyboardInput({
   onGameAction: dispatch,
