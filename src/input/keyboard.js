@@ -22,6 +22,8 @@ const KEY_ACTIONS = {
 const VIEW_ACTIONS = {
   g: { type: 'toggleGhost' },
   G: { type: 'toggleGhost' },
+  m: { type: 'toggleMusic' },
+  M: { type: 'toggleMusic' },
 };
 
 /**

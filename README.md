@@ -28,6 +28,7 @@ npm test           # tests du moteur, sans navigateur
 | Espace | Chute rapide (+2 points par ligne parcourue) |
 | P | Pause |
 | G | Afficher / masquer la projection d'atterrissage (masquée par défaut) |
+| M | Couper / remettre la musique |
 
 ## Règles
 
@@ -52,8 +53,12 @@ src/
     hud.js        score, niveau, overlay pause / game over
   input/
     keyboard.js   traduit les touches en actions
+  audio/
+    music.js      musique de fond, calée sur l'état du jeu
   net/
     transport.js  achemine les actions (local, ou WebSocket)
+  view/
+    preferences.js réglages locaux (projection, musique)
   main.js       câblage : DOM + horloge + boucle de jeu
 test/
   engine.test.js  tests du moteur
@@ -78,3 +83,9 @@ client  -> serveur : { type: 'action', action }
 ```
 
 La graine **doit** venir du serveur : sans elle, deux joueurs ne voient pas la même séquence de pièces.
+
+## Musique
+
+La bande-son (`assets/level-up.mp3`) tourne en boucle pendant la partie et se met en pause en même temps que le jeu. On la coupe avec `M` ou la case « Musique » ; le choix est mémorisé par le navigateur.
+
+Elle est active par défaut, mais **ne démarre qu'à la première interaction** avec la page (clic ou touche) : les navigateurs interdisent de lancer du son avant un geste de l'utilisateur. En pratique elle se lance donc dès la première touche de déplacement.
