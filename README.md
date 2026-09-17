@@ -82,6 +82,10 @@ Protocole prévu :
 serveur -> client : { type: 'start', seed }
 serveur -> client : { type: 'action', playerId, action }
 client  -> serveur : { type: 'action', action }
+```
+
+La graine **doit** venir du serveur : sans elle, deux joueurs ne voient pas la même séquence de pièces.
+
 ## Musique
 
 Le thème est **Korobeïniki**, chanson populaire russe de 1861 reprise par Tetris. La bande-son est le fichier `assets/korobeiniki.mid`.

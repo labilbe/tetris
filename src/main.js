@@ -64,11 +64,13 @@ function updateMusicStatus() {
     if (status.contextState === 'running' && status.notes === 0) {
       text = 'Chargement de la musique…';
     } else if (status.contextState !== 'running') {
-      text = `▶ Cliquez ici pour activer le son (audio : ${status.contextState}, gestes : ${status.gestures})`;
+      // Le navigateur exige un geste avant d'autoriser le son : sans ce
+      // message, le silence initial passe pour une panne.
+      text = '▶ Appuyez sur une touche, ou cliquez ici, pour activer le son';
     }
   }
 
-  if (status.lastError) text += ` [${status.lastError}]`;
+  if (status.lastError) text += ` (${status.lastError})`;
 
   if (text === musicStatus.textContent) return;
   musicStatus.textContent = text;
