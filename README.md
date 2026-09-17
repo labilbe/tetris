@@ -54,18 +54,16 @@ src/
   input/
     keyboard.js   traduit les touches en actions
   audio/
-    score.js      partition de Korobeïniki (mélodie + basse)
+    midi.js       lecteur de fichier MIDI, sans dépendance
     music.js      synthèse Web Audio, calée sur l'état du jeu
   net/
     transport.js  achemine les actions (local, ou WebSocket)
   view/
     preferences.js réglages locaux (projection, musique)
   main.js       câblage : DOM + horloge + boucle de jeu
-tools/
-  generate-midi.js  écrit assets/korobeiniki.mid depuis la partition
 test/
   engine.test.js  tests du moteur
-  score.test.js   tests de la partition
+  midi.test.js    tests du lecteur MIDI
 ```
 
 Trois règles tiennent l'ensemble :
@@ -84,19 +82,20 @@ Protocole prévu :
 serveur -> client : { type: 'start', seed }
 serveur -> client : { type: 'action', playerId, action }
 client  -> serveur : { type: 'action', action }
-```
-
-La graine **doit** venir du serveur : sans elle, deux joueurs ne voient pas la même séquence de pièces.
-
 ## Musique
 
-Le thème est **Korobeïniki**, chanson populaire russe de 1861 — la mélodie reprise par Tetris. Elle est dans le domaine public ; c'est elle qui est notée ici, avec un accompagnement écrit pour ce projet, et non une transcription de l'arrangement Game Boy.
+Le thème est **Korobeïniki**, chanson populaire russe de 1861 reprise par Tetris. La bande-son est le fichier `assets/korobeiniki.mid`.
 
-La partition vit dans `src/audio/score.js` et sert deux sorties :
+Aucun navigateur ne lit le MIDI nativement. Le fichier est donc analysé par `src/audio/midi.js` — un lecteur de Standard MIDI File sans dépendance, qui rend une liste de notes datées en secondes — puis joué par un petit synthétiseur Web Audio (`src/audio/music.js`) :
 
-- **En jeu**, elle est synthétisée en direct par Web Audio (`src/audio/music.js`) : une onde carrée pour la mélodie, une triangulaire pour la basse. Aucun navigateur ne lit le MIDI nativement, et embarquer un synthétiseur complet serait disproportionné pour quelques dizaines de notes.
-- **En fichier**, `assets/korobeiniki.mid` est produit par `node tools/generate-midi.js` — format ouvert, ouvrable dans n'importe quel séquenceur.
+- onde triangulaire sous le sol 2, carrée au-dessus ;
+- les notes écrites au-dessus du do 8 ne sont pas musicales, c'est la piste rythmique : elles sont rendues en bruit filtré plutôt qu'en sifflement ;
+- un compresseur en sortie, le morceau montant jusqu'à une dizaine de voix simultanées.
+
+Le lecteur MIDI ne dépend pas du navigateur : il tourne aussi sous Node, ce qui permet de le tester directement sur la bande-son (`test/midi.test.js`).
 
 La musique tourne en boucle pendant la partie et s'arrête en même temps que le jeu. On la coupe avec `M` ou la case « Musique » ; le choix est mémorisé.
 
 Elle est active par défaut mais **ne démarre qu'à la première interaction** avec la page (clic ou touche) : les navigateurs interdisent de lancer du son avant un geste de l'utilisateur. En pratique elle se lance dès la première touche de déplacement.
+
+Pour changer de morceau, il suffit de remplacer `assets/korobeiniki.mid` par un autre fichier MIDI (ou de passer `src` à `createMusic`).

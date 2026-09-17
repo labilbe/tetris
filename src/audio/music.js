@@ -1,68 +1,128 @@
 /**
- * Musique de fond : Korobeiniki, synthetisee en direct par le navigateur.
+ * Musique de fond : lecture de assets/korobeiniki.mid.
  *
- * Pourquoi pas le fichier MIDI ? Aucun navigateur ne lit le MIDI nativement ;
- * le jouer supposerait d'embarquer un synthetiseur et une banque de sons. La
- * partition tenant en quelques dizaines de notes, on la joue directement avec
- * Web Audio : deux oscillateurs, un carre pour la melodie et un triangle pour
- * la basse. assets/korobeiniki.mid est genere depuis la meme partition.
+ * Les navigateurs ne lisent pas le MIDI nativement. Le fichier est donc analyse
+ * (src/audio/midi.js) puis joue par un petit synthetiseur Web Audio : onde
+ * triangulaire pour les basses, carree pour le reste, et bruit filtre pour la
+ * piste rythmique, ecrite tres au-dessus de l'ambitus musical comme c'est
+ * l'usage dans ce genre de fichier.
  *
  * Couche locale au meme titre que le rendu : elle observe l'etat du jeu mais ne
  * le modifie jamais, et rien de ce qu'elle fait ne transite par le reseau.
  */
 
 import { STATUS } from '../engine/constants.js';
-import { TEMPO_BPM, TOTAL_BEATS, toEvents, toFrequency } from './score.js';
+import { midiToFrequency, parseMidi } from './midi.js';
 
-const SECONDS_PER_BEAT = 60 / TEMPO_BPM;
 const LOOKAHEAD_MS = 25; // frequence de reveil du planificateur
-const SCHEDULE_AHEAD = 0.2; // on programme les notes jusqu'a 200 ms en avance
-const LEGATO = 0.92; // part de la duree reellement tenue, le reste detache les notes
+const SCHEDULE_AHEAD = 0.3; // on programme les notes jusqu'a 300 ms en avance
+const LOOP_GAP = 0.4; // respiration entre deux passages
+
+/** Au-dessus de cette hauteur, la note n'est plus musicale : c'est la rythmique. */
+const PERCUSSION_THRESHOLD = 108;
 
 /**
  * @param {object} [options]
+ * @param {string} [options.src]
  * @param {number} [options.volume] entre 0 et 1
  */
-export function createMusic({ volume = 0.18 } = {}) {
-  const events = toEvents();
-  const loopSeconds = TOTAL_BEATS * SECONDS_PER_BEAT;
-
+export function createMusic({ src = 'assets/korobeiniki.mid', volume = 0.5 } = {}) {
   /** @type {AudioContext | null} */
   let context = null;
   let master = null;
+  let noiseBuffer = null;
   let timer = null;
+
+  /** @type {import('./midi.js').MidiSong | null} */
+  let song = null;
+  let loading = null;
 
   let enabled = false;
   let wanted = false; // la musique devrait-elle jouer, au vu de l'etat du jeu
   let waitingForGesture = false;
 
-  let loopStart = 0; // date de debut de la boucle en cours, dans l'horloge audio
+  let loopStart = 0; // date de debut du passage en cours, dans l'horloge audio
   let cursor = 0; // prochaine note a programmer
+
+  async function loadSong() {
+    if (song) return song;
+    if (!loading) {
+      loading = fetch(src)
+        .then((response) => {
+          if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+          return response.arrayBuffer();
+        })
+        .then((buffer) => {
+          song = parseMidi(buffer);
+          return song;
+        })
+        .catch((error) => {
+          // Sans musique le jeu reste parfaitement jouable : on n'interrompt rien.
+          console.warn(`Musique indisponible (${src}) :`, error.message);
+          loading = null;
+          return null;
+        });
+    }
+    return loading;
+  }
 
   function ensureContext() {
     if (context) return context;
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
     context = new AudioContextClass();
+
+    // Le fichier monte jusqu'a une dizaine de voix simultanees : sans
+    // compresseur, les accords saturent alors que les notes seules sont faibles.
+    const compressor = context.createDynamicsCompressor();
     master = context.createGain();
     master.gain.value = volume;
-    master.connect(context.destination);
-    loopStart = context.currentTime + 0.1;
+    master.connect(compressor);
+    compressor.connect(context.destination);
+
+    const length = Math.floor(context.sampleRate * 0.2);
+    noiseBuffer = context.createBuffer(1, length, context.sampleRate);
+    const channel = noiseBuffer.getChannelData(0);
+    for (let i = 0; i < length; i++) channel[i] = Math.random() * 2 - 1;
+
     return context;
   }
 
-  function playTone(event, when) {
+  function playPercussion(note, when) {
+    const source = context.createBufferSource();
+    source.buffer = noiseBuffer;
+
+    const filter = context.createBiquadFilter();
+    filter.type = 'highpass';
+    filter.frequency.value = 7000;
+
+    const gain = context.createGain();
+    const duration = 0.05;
+    const peak = (note.velocity / 127) * 0.12;
+
+    gain.gain.setValueAtTime(peak, when);
+    gain.gain.exponentialRampToValueAtTime(0.0001, when + duration);
+
+    source.connect(filter);
+    filter.connect(gain);
+    gain.connect(master);
+    source.start(when);
+    source.stop(when + duration);
+  }
+
+  function playTone(note, when) {
     const oscillator = context.createOscillator();
     const gain = context.createGain();
 
-    oscillator.type = event.voice === 'bass' ? 'triangle' : 'square';
-    oscillator.frequency.value = toFrequency(event.name);
+    const isBass = note.midi < 55;
+    oscillator.type = isBass ? 'triangle' : 'square';
+    oscillator.frequency.value = midiToFrequency(note.midi);
 
-    const duration = event.beats * SECONDS_PER_BEAT * LEGATO;
-    const peak = event.voice === 'bass' ? 0.5 : 0.32;
+    const duration = Math.max(note.duration * 0.9, 0.05);
+    const peak = (note.velocity / 127) * (isBass ? 0.22 : 0.1);
 
     // Rampes exponentielles : une coupure nette produirait un clic audible.
     gain.gain.setValueAtTime(0.0001, when);
-    gain.gain.exponentialRampToValueAtTime(peak, when + 0.012);
+    gain.gain.exponentialRampToValueAtTime(peak, when + 0.008);
     gain.gain.exponentialRampToValueAtTime(0.0001, when + duration);
 
     oscillator.connect(gain);
@@ -72,14 +132,21 @@ export function createMusic({ volume = 0.18 } = {}) {
   }
 
   function schedule() {
+    if (!song || song.notes.length === 0) return;
+
     const horizon = context.currentTime + SCHEDULE_AHEAD;
-    while (loopStart + events[cursor].beat * SECONDS_PER_BEAT < horizon) {
-      const event = events[cursor];
-      playTone(event, loopStart + event.beat * SECONDS_PER_BEAT);
+    const loopLength = song.duration + LOOP_GAP;
+
+    while (loopStart + song.notes[cursor].time < horizon) {
+      const note = song.notes[cursor];
+      const when = loopStart + note.time;
+      if (note.midi > PERCUSSION_THRESHOLD) playPercussion(note, when);
+      else playTone(note, when);
+
       cursor++;
-      if (cursor === events.length) {
+      if (cursor === song.notes.length) {
         cursor = 0;
-        loopStart += loopSeconds; // boucle sans couture
+        loopStart += loopLength;
       }
     }
   }
@@ -113,10 +180,12 @@ export function createMusic({ volume = 0.18 } = {}) {
     if (!enabled || !wanted) {
       stopScheduler();
       // suspend() gele l'horloge audio : la reprise repart exactement d'ou
-      // la musique s'etait arretee, sans recalculer la position dans la boucle.
+      // la musique s'etait arretee, sans recalculer la position dans le morceau.
       if (context && context.state === 'running') await context.suspend();
       return;
     }
+
+    if (!(await loadSong())) return;
 
     ensureContext();
     await context.resume();
@@ -127,6 +196,7 @@ export function createMusic({ volume = 0.18 } = {}) {
       return;
     }
 
+    if (loopStart === 0) loopStart = context.currentTime + 0.1;
     startScheduler();
   }
 
