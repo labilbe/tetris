@@ -26,13 +26,12 @@ const hud = createHud({
   overlayText: document.getElementById('overlay-text'),
 });
 
-const transport = createLocalTransport();
-
 const music = createMusic();
 
 const ghostCheckbox = document.getElementById('ghost');
 const musicCheckbox = document.getElementById('music');
 const musicStatus = document.getElementById('music-status');
+const menu = document.getElementById('menu');
 
 const GHOST_PREFERENCE = 'tetris.ghost';
 const MUSIC_PREFERENCE = 'tetris.music';
@@ -79,17 +78,16 @@ function updateMusicStatus() {
 
 /** @type {import('./engine/state.js').GameState} */
 let state;
+/** @type {ReturnType<typeof createLocalTransport> | null} */
+let transport = null;
 let lastTime = null;
+let looping = false;
 
 /** Envoie une action : en reseau elle repassera par le serveur avant d'etre appliquee. */
 function dispatch(action) {
+  if (!transport) return; // encore au menu : il n'y a pas de partie a piloter
   transport.send(action);
 }
-
-transport.onAction((action) => {
-  state = reduce(state, action);
-  render();
-});
 
 function render() {
   if (!state) return; // avant le demarrage du transport, il n'y a rien a dessiner
@@ -108,6 +106,39 @@ function loop(time) {
   render();
 
   requestAnimationFrame(loop);
+}
+
+/**
+ * Demarre une partie depuis le menu.
+ *
+ * Le clic qui declenche cette fonction est aussi le geste que le navigateur
+ * exige pour autoriser le son : c'est pour cela que la musique part en meme
+ * temps que la partie, sans rien demander de plus au joueur.
+ *
+ * @param {'solo'} mode le multijoueur attend son serveur
+ */
+async function startGame(mode) {
+  music.unlock();
+
+  menu.hidden = true;
+
+  // Le mode choisit le transport, et rien d'autre : le reste du jeu ignore
+  // s'il joue en solo ou en reseau.
+  transport = createLocalTransport();
+  transport.onAction((action) => {
+    state = reduce(state, action);
+    render();
+  });
+
+  const { seed } = await transport.start();
+  state = createState(seed);
+  lastTime = null;
+  render();
+
+  if (!looping) {
+    looping = true;
+    requestAnimationFrame(loop);
+  }
 }
 
 // L'onglet en arriere-plan gele requestAnimationFrame : on repart d'une base
@@ -139,10 +170,7 @@ createKeyboardInput({
   },
 });
 
+document.getElementById('play-solo').addEventListener('click', () => startGame('solo'));
+
 setGhostVisible(readPreference(GHOST_PREFERENCE, false));
 setMusicEnabled(readPreference(MUSIC_PREFERENCE, true));
-
-const { seed } = await transport.start();
-state = createState(seed);
-render();
-requestAnimationFrame(loop);

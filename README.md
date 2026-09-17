@@ -18,6 +18,12 @@ npm start          # sert le dossier sur http://localhost:1984
 npm test           # tests du moteur, sans navigateur
 ```
 
+## Menu
+
+Au chargement, un menu propose « Partie solo » et « Multijoueur ». Le multijoueur est désactivé tant que le serveur n'est pas écrit — le transport réseau, lui, est déjà en place.
+
+Ce menu joue un second rôle : le clic qui lance la partie est aussi le geste que les navigateurs exigent avant d'autoriser le son. La musique démarre donc avec la partie, sans rien demander de plus au joueur.
+
 ## Commandes
 
 | Touche | Action |
@@ -100,6 +106,6 @@ Le lecteur MIDI ne dépend pas du navigateur : il tourne aussi sous Node, ce qui
 
 La musique tourne en boucle pendant la partie et s'arrête en même temps que le jeu. On la coupe avec `M` ou la case « Musique » ; le choix est mémorisé.
 
-Elle est active par défaut mais **ne démarre qu'à la première interaction** avec la page (clic ou touche) : les navigateurs interdisent de lancer du son avant un geste de l'utilisateur. En pratique elle se lance dès la première touche de déplacement.
+Elle est active par défaut. Les navigateurs interdisent de lancer du son avant un geste de l'utilisateur : c'est le rôle du menu de démarrage — le clic sur « Partie solo » est ce geste, et la musique part donc en même temps que la partie. Si le son reste bloqué malgré tout, une ligne cliquable apparaît sous la case « Musique » pour le débloquer.
 
 Pour changer de morceau, il suffit de remplacer `assets/korobeiniki.mid` par un autre fichier MIDI (ou de passer `src` à `createMusic`).
