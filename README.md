@@ -54,14 +54,18 @@ src/
   input/
     keyboard.js   traduit les touches en actions
   audio/
-    music.js      musique de fond, calée sur l'état du jeu
+    score.js      partition de Korobeïniki (mélodie + basse)
+    music.js      synthèse Web Audio, calée sur l'état du jeu
   net/
     transport.js  achemine les actions (local, ou WebSocket)
   view/
     preferences.js réglages locaux (projection, musique)
   main.js       câblage : DOM + horloge + boucle de jeu
+tools/
+  generate-midi.js  écrit assets/korobeiniki.mid depuis la partition
 test/
   engine.test.js  tests du moteur
+  score.test.js   tests de la partition
 ```
 
 Trois règles tiennent l'ensemble :
@@ -86,6 +90,13 @@ La graine **doit** venir du serveur : sans elle, deux joueurs ne voient pas la m
 
 ## Musique
 
-La bande-son (`assets/level-up.mp3`) tourne en boucle pendant la partie et se met en pause en même temps que le jeu. On la coupe avec `M` ou la case « Musique » ; le choix est mémorisé par le navigateur.
+Le thème est **Korobeïniki**, chanson populaire russe de 1861 — la mélodie reprise par Tetris. Elle est dans le domaine public ; c'est elle qui est notée ici, avec un accompagnement écrit pour ce projet, et non une transcription de l'arrangement Game Boy.
 
-Elle est active par défaut, mais **ne démarre qu'à la première interaction** avec la page (clic ou touche) : les navigateurs interdisent de lancer du son avant un geste de l'utilisateur. En pratique elle se lance donc dès la première touche de déplacement.
+La partition vit dans `src/audio/score.js` et sert deux sorties :
+
+- **En jeu**, elle est synthétisée en direct par Web Audio (`src/audio/music.js`) : une onde carrée pour la mélodie, une triangulaire pour la basse. Aucun navigateur ne lit le MIDI nativement, et embarquer un synthétiseur complet serait disproportionné pour quelques dizaines de notes.
+- **En fichier**, `assets/korobeiniki.mid` est produit par `node tools/generate-midi.js` — format ouvert, ouvrable dans n'importe quel séquenceur.
+
+La musique tourne en boucle pendant la partie et s'arrête en même temps que le jeu. On la coupe avec `M` ou la case « Musique » ; le choix est mémorisé.
+
+Elle est active par défaut mais **ne démarre qu'à la première interaction** avec la page (clic ou touche) : les navigateurs interdisent de lancer du son avant un geste de l'utilisateur. En pratique elle se lance dès la première touche de déplacement.

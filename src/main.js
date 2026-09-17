@@ -28,7 +28,7 @@ const hud = createHud({
 
 const transport = createLocalTransport();
 
-const music = createMusic({ src: 'assets/level-up.mp3' });
+const music = createMusic();
 
 const ghostCheckbox = document.getElementById('ghost');
 const musicCheckbox = document.getElementById('music');
