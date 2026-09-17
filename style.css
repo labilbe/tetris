@@ -98,7 +98,12 @@ button:hover { filter: brightness(1.1); }
 /* Herite de la regle button ci-dessus : tout y est redefini pour en faire une
    simple ligne d'avertissement cliquable, et non un bouton d'action. */
 .music-status {
-  margin: -12px 0 0;
+  position: absolute;
+  left: 24px;
+  right: 24px;
+  bottom: 8px;
+  z-index: 2;
+  margin: 0;
   padding: 6px 8px;
   border: 1px solid #5d4a22;
   border-radius: 6px;

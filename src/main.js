@@ -59,7 +59,9 @@ function updateMusicStatus() {
   const status = music.getStatus();
   let text = '';
 
-  if (status.enabled && !status.scheduling) {
+  // Rien a signaler tant qu'on est au menu : le son n'y est pas encore attendu,
+  // et le message serait de toute facon cache derriere le menu.
+  if (started && status.enabled && !status.scheduling) {
     if (status.contextState === 'running' && status.notes === 0) {
       text = 'Chargement de la musique…';
     } else if (status.contextState !== 'running') {
@@ -82,6 +84,7 @@ let state;
 let transport = null;
 let lastTime = null;
 let looping = false;
+let started = false; // une partie a-t-elle ete lancee depuis le menu
 
 /** Envoie une action : en reseau elle repassera par le serveur avant d'etre appliquee. */
 function dispatch(action) {
@@ -121,6 +124,7 @@ async function startGame(mode) {
   music.unlock();
 
   menu.hidden = true;
+  started = true;
 
   // Le mode choisit le transport, et rien d'autre : le reste du jeu ignore
   // s'il joue en solo ou en reseau.
