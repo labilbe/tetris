@@ -54,7 +54,7 @@ Ce menu joue un second rôle : le clic qui lance la partie est aussi le geste qu
 | ↑ | Rotation |
 | Espace | Chute rapide (+2 points par ligne parcourue) |
 | P | Pause |
-| G | Afficher / masquer la projection d'atterrissage (masquée par défaut) |
+| G | Afficher / masquer la projection d'atterrissage (affichée par défaut) |
 | M | Couper / remettre la musique |
 
 En pause, l'écran propose « Reprendre » et « Recommencer » ; en fin de partie, seulement « Rejouer ».
@@ -65,7 +65,7 @@ En pause, l'écran propose « Reprendre » et « Recommencer » ; en fin de part
 - Distribution en « sac de 7 » : chaque pièce sort une fois par cycle.
 - Score par lignes effacées simultanément : 100 / 300 / 500 / 800, multiplié par le niveau.
 - Le niveau augmente toutes les 10 lignes et accélère la descente.
-- Une projection translucide peut indiquer où la pièce va atterrir : masquée par défaut, elle s'active avec `G` ou la case « Projection », et le choix est mémorisé par le navigateur.
+- Une projection translucide peut indiquer où la pièce va atterrir : affichée par défaut, elle se coupe avec `G` ou la case « Projection », et le choix est mémorisé par le navigateur.
 
 ## Architecture
 

@@ -11,10 +11,12 @@
 
 body {
   margin: 0;
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  /* dvh plutot que vh : sur mobile, vh ignore les barres du navigateur. */
+  height: 100dvh;
+  display: grid;
+  place-items: center;
+  /* Le jeu est mis a l'echelle pour tenir : plus rien ne doit deborder. */
+  overflow: hidden;
   background: var(--bg);
   color: var(--text);
   font-family: "Segoe UI", system-ui, sans-serif;
@@ -25,6 +27,11 @@ body {
   display: flex;
   gap: 24px;
   padding: 24px;
+  /* --fit est calcule en JS d'apres la place disponible : sur un ecran court
+     (portable en mise a l'echelle Windows), le jeu retrecit au lieu d'etre
+     coupe. La mise a l'echelle preserve exactement les proportions. */
+  transform: scale(var(--fit, 1));
+  transform-origin: center;
   background: var(--panel);
   border-radius: 12px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, .5);

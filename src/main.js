@@ -33,6 +33,29 @@ const music = createMusic();
 const ghostCheckbox = document.getElementById('ghost');
 const musicCheckbox = document.getElementById('music');
 const menu = document.getElementById('menu');
+const game = document.querySelector('.game');
+
+/**
+ * Met le jeu a l'echelle de la place disponible.
+ *
+ * La taille du plateau est fixe (10 x 20 cases de 30 px) ; sur un ecran court
+ * — un portable en mise a l'echelle Windows, par exemple — la boite depasserait
+ * et le bas serait coupe. On la reduit donc plutot que de la rogner.
+ */
+function fitToViewport() {
+  // offsetWidth et offsetHeight sont des mesures de mise en page : la
+  // transformation ne les affecte pas, donc pas de boucle de retroaction.
+  const { offsetWidth: width, offsetHeight: height } = game;
+  if (!width || !height) return;
+
+  const marge = 16;
+  const fit = Math.min(
+    1,
+    (window.innerWidth - marge) / width,
+    (window.innerHeight - marge) / height,
+  );
+  game.style.setProperty('--fit', fit);
+}
 
 const GHOST_PREFERENCE = 'tetris.ghost';
 const MUSIC_PREFERENCE = 'tetris.music';
@@ -139,5 +162,9 @@ createKeyboardInput({
 
 document.getElementById('play-solo').addEventListener('click', () => startGame('solo'));
 
-setGhostVisible(readPreference(GHOST_PREFERENCE, false));
+window.addEventListener('resize', fitToViewport);
+fitToViewport();
+
+// Valeurs par defaut pour un nouveau joueur : un choix deja enregistre l'emporte.
+setGhostVisible(readPreference(GHOST_PREFERENCE, true));
 setMusicEnabled(readPreference(MUSIC_PREFERENCE, true));
