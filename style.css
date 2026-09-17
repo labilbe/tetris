@@ -163,6 +163,13 @@ kbd {
   color: var(--muted);
 }
 
+.overlay-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 180px;
+}
+
 .overlay p {
   margin: 0;
   font-size: 28px;

@@ -24,6 +24,8 @@ const hud = createHud({
   toggle: document.getElementById('toggle'),
   overlay: document.getElementById('overlay'),
   overlayText: document.getElementById('overlay-text'),
+  resume: document.getElementById('resume'),
+  restart: document.getElementById('restart'),
 });
 
 const music = createMusic();
@@ -120,6 +122,7 @@ document.addEventListener('visibilitychange', () => {
 
 document.getElementById('toggle').addEventListener('click', () => dispatch({ type: 'togglePause' }));
 document.getElementById('restart').addEventListener('click', () => dispatch({ type: 'reset', seed: randomSeed() }));
+document.getElementById('resume').addEventListener('click', () => dispatch({ type: 'resume' }));
 
 ghostCheckbox.addEventListener('change', () => setGhostVisible(ghostCheckbox.checked));
 musicCheckbox.addEventListener('change', () => setMusicEnabled(musicCheckbox.checked));

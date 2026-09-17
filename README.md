@@ -36,6 +36,8 @@ Ce menu joue un second rôle : le clic qui lance la partie est aussi le geste qu
 | G | Afficher / masquer la projection d'atterrissage (masquée par défaut) |
 | M | Couper / remettre la musique |
 
+En pause, l'écran propose « Reprendre » et « Recommencer » ; en fin de partie, seulement « Rejouer ».
+
 ## Règles
 
 - Grille de 10 × 20 cases, 7 pièces classiques (I, J, L, O, S, T, Z).
