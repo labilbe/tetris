@@ -9,6 +9,13 @@
  *
  * Couche locale au meme titre que le rendu : elle observe l'etat du jeu mais ne
  * le modifie jamais, et rien de ce qu'elle fait ne transite par le reseau.
+ *
+ * Deblocage du son : un navigateur refuse de demarrer l'audio tant que le
+ * joueur n'a pas interagi. La regle pratique est que resume() doit partir
+ * directement du gestionnaire de l'evenement, sans await avant lui : une
+ * attente intercalee (charger le fichier, par exemple) fait sortir l'appel de
+ * la tache du geste et le navigateur le refuse. Tout ce qui attend est donc
+ * repousse apres resume().
  */
 
 import { STATUS } from '../engine/constants.js';
@@ -20,6 +27,8 @@ const LOOP_GAP = 0.4; // respiration entre deux passages
 
 /** Au-dessus de cette hauteur, la note n'est plus musicale : c'est la rythmique. */
 const PERCUSSION_THRESHOLD = 108;
+
+const GESTURES = ['pointerdown', 'keydown', 'touchstart'];
 
 /**
  * @param {object} [options]
@@ -39,13 +48,13 @@ export function createMusic({ src = 'assets/korobeiniki.mid', volume = 0.5 } = {
 
   let enabled = false;
   let wanted = false; // la musique devrait-elle jouer, au vu de l'etat du jeu
-  let waitingForGesture = false;
+  let armed = false; // en attente d'un geste pour debloquer le son
 
   let loopStart = 0; // date de debut du passage en cours, dans l'horloge audio
   let cursor = 0; // prochaine note a programmer
 
-  async function loadSong() {
-    if (song) return song;
+  function loadSong() {
+    if (song) return Promise.resolve(song);
     if (!loading) {
       loading = fetch(src)
         .then((response) => {
@@ -163,17 +172,31 @@ export function createMusic({ src = 'assets/korobeiniki.mid', volume = 0.5 } = {
     timer = null;
   }
 
-  function startOnFirstGesture() {
-    if (waitingForGesture) return;
-    waitingForGesture = true;
-    const resume = () => {
-      waitingForGesture = false;
-      document.removeEventListener('pointerdown', resume);
-      document.removeEventListener('keydown', resume);
-      if (enabled && wanted) apply();
-    };
-    document.addEventListener('pointerdown', resume, { once: true });
-    document.addEventListener('keydown', resume, { once: true });
+  function disarm() {
+    if (!armed) return;
+    armed = false;
+    for (const type of GESTURES) document.removeEventListener(type, onGesture, true);
+  }
+
+  /**
+   * Premier geste du joueur : on debloque le contexte audio ici meme, sans rien
+   * attendre avant resume(). Le reste (charger le fichier, programmer les
+   * notes) se fait ensuite, une fois le son autorise.
+   */
+  function onGesture() {
+    ensureContext();
+    context.resume().then(() => {
+      if (context.state !== 'running') return; // toujours refuse : on reste arme
+      disarm();
+      apply();
+    });
+  }
+
+  function arm() {
+    if (armed) return;
+    armed = true;
+    // En phase de capture : le deblocage ne depend pas des gestionnaires du jeu.
+    for (const type of GESTURES) document.addEventListener(type, onGesture, true);
   }
 
   async function apply() {
@@ -185,16 +208,17 @@ export function createMusic({ src = 'assets/korobeiniki.mid', volume = 0.5 } = {
       return;
     }
 
-    if (!(await loadSong())) return;
-
     ensureContext();
-    await context.resume();
 
-    // Sans geste prealable du joueur, le navigateur laisse le contexte suspendu.
     if (context.state !== 'running') {
-      startOnFirstGesture();
-      return;
+      arm(); // le son reste bloque jusqu'au prochain geste
+      await context.resume();
+      if (context.state !== 'running') return;
+      disarm();
     }
+
+    if (!(await loadSong())) return;
+    if (!enabled || !wanted) return; // l'etat a pu changer pendant le chargement
 
     if (loopStart === 0) loopStart = context.currentTime + 0.1;
     startScheduler();
@@ -203,6 +227,9 @@ export function createMusic({ src = 'assets/korobeiniki.mid', volume = 0.5 } = {
   return {
     setEnabled(value) {
       enabled = value;
+      // Le fichier est charge des l'activation : il n'est ainsi plus dans le
+      // chemin critique au moment du geste qui debloque le son.
+      if (value) loadSong();
       apply();
     },
 
