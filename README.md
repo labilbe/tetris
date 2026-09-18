@@ -33,6 +33,15 @@ New-NetFirewallRule -DisplayName "Tetris (port 1984)" -Direction Inbound `
 
 Le jeu étant entièrement local au navigateur, chaque machine joue sa propre partie : la page partagée ne fait pas encore un jeu partagé — c'est l'objet du multijoueur.
 
+### Sur téléphone
+
+Deux chemins, selon ce qu'on veut :
+
+- **En ligne** : <https://labilbe.github.io/tetris/> — rien à lancer, mais le solo seulement, faute de serveur en face.
+- **Sur le réseau local** : l'adresse de la machine qui sert la page, par exemple `http://192.168.66.12:1984`. Le multijoueur y fonctionne, le serveur tournant sur cette machine.
+
+Le pavé tactile apparaît automatiquement, et la boîte de jeu se met à l'échelle de l'écran.
+
 ## Tester
 
 ```bash
@@ -56,6 +65,8 @@ Ce menu joue un second rôle : le clic qui lance la partie est aussi le geste qu
 | P | Pause |
 | G | Afficher / masquer la projection d'atterrissage (affichée par défaut) |
 | M | Couper / remettre la musique |
+
+Sur écran tactile — ou dans une fenêtre étroite — un pavé de commandes apparaît sous le plateau : déplacer, tourner, descendre, chute rapide. Maintenir le doigt sur une flèche répète le déplacement, comme une touche enfoncée.
 
 L'écran de pause propose « Reprendre » et « Retour au menu ». En fin de partie, seul le retour au menu subsiste — c'est là qu'on rechoisit le mode et qu'on relance une partie.
 
@@ -82,6 +93,7 @@ src/
     hud.js        score, niveau, overlay pause / game over
   input/
     keyboard.js   traduit les touches en actions
+    touch.js      traduit les appuis du pavé tactile en actions
   audio/
     midi.js       lecteur de fichier MIDI, sans dépendance
     music.js      synthèse Web Audio, calée sur l'état du jeu

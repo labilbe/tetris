@@ -102,6 +102,38 @@ button:hover { filter: brightness(1.1); }
 
 .option:hover { color: var(--text); }
 
+/* Commandes tactiles. Cibles larges, et aucun geste du navigateur : sans
+   touch-action, l'appui fait defiler ou zoomer la page. */
+.pad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  width: 100%;
+  touch-action: none;
+  user-select: none;
+}
+
+.pad button {
+  padding: 0;
+  height: 56px;
+  background: #2b3040;
+  color: var(--text);
+  font-size: 22px;
+  line-height: 1;
+  touch-action: none;
+}
+
+.pad button:active {
+  background: var(--accent);
+  color: #0b1017;
+}
+
+.pad button:hover { filter: none; }
+
+/* La chute rapide occupe toute la largeur : c'est le geste decisif. */
+.pad button[data-action="soft"] { grid-column: span 1; }
+.pad button[data-action="hard"] { grid-column: span 2; }
+
 .help ul {
   margin: 0;
   padding: 0;
@@ -203,8 +235,14 @@ kbd {
   font-weight: 700;
 }
 
-@media (max-width: 560px) {
+/* Ecran etroit (telephone) : tout s'empile, et les commandes tactiles se
+   placent juste sous le plateau, a portee du pouce. */
+@media (max-width: 700px) {
   .game { flex-direction: column; align-items: center; }
   .panel { width: 300px; }
   .help { display: none; }
+
+  #board { order: 1; }
+  .pad { order: 2; width: 300px; }
+  .panel { order: 3; }
 }

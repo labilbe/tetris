@@ -7,6 +7,7 @@ import { createMusic } from './audio/music.js';
 import { STATUS } from './engine/constants.js';
 import { createState, reduce, tick } from './engine/state.js';
 import { createKeyboardInput } from './input/keyboard.js';
+import { createTouchInput } from './input/touch.js';
 import { createLocalTransport, createWebSocketTransport } from './net/transport.js';
 import { createRenderer } from './render/canvas.js';
 import { createHud } from './render/hud.js';
@@ -39,7 +40,13 @@ const waitingText = document.getElementById('waiting-text');
 const waitingBegin = document.getElementById('waiting-begin');
 const remaining = document.getElementById('remaining');
 const multiOnly = document.querySelectorAll('.multi-only');
+const pad = document.getElementById('pad');
 const game = document.querySelector('.game');
+
+// Pavé tactile : sur un écran tactile, et sur un écran étroit où la mise en
+// page s'empile de toute façon.
+const COARSE = matchMedia('(pointer: coarse)');
+const NARROW = matchMedia('(max-width: 700px)');
 
 /**
  * Met le jeu a l'echelle de la place disponible.
@@ -61,6 +68,12 @@ function fitToViewport() {
     (window.innerHeight - marge) / height,
   );
   game.style.setProperty('--fit', fit);
+}
+
+/** Le pave change la hauteur de la boite : il faut remesurer apres coup. */
+function updatePad() {
+  pad.hidden = !(COARSE.matches || NARROW.matches);
+  fitToViewport();
 }
 
 const GHOST_PREFERENCE = 'tetris.ghost';
@@ -288,8 +301,13 @@ document.getElementById('play-multi').addEventListener('click', () => startGame(
 document.getElementById('waiting-cancel').addEventListener('click', () => showMenu());
 document.getElementById('waiting-begin').addEventListener('click', () => transport?.begin());
 
+createTouchInput({ pad, onGameAction: dispatch });
+
+COARSE.addEventListener('change', updatePad);
+NARROW.addEventListener('change', updatePad);
+
 window.addEventListener('resize', fitToViewport);
-fitToViewport();
+updatePad();
 
 // Valeurs par defaut pour un nouveau joueur : un choix deja enregistre l'emporte.
 setGhostVisible(readPreference(GHOST_PREFERENCE, true));
