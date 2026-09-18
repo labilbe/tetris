@@ -70,6 +70,17 @@ function fitToViewport() {
   game.style.setProperty('--fit', fit);
 }
 
+/**
+ * Le multijoueur suppose un serveur sur la machine qui sert la page. Sur un
+ * hebergement statique (GitHub Pages) il n'y en a aucun, et une page https ne
+ * peut de toute facon pas ouvrir une connexion vers un port arbitraire. Autant
+ * le dire tout de suite plutot que de laisser le joueur attendre une connexion
+ * qui n'aboutira pas.
+ */
+function multiplayerUnavailable() {
+  return location.protocol === 'https:' ? 'Le multijoueur demande un serveur : il n’est pas disponible sur la version en ligne.' : '';
+}
+
 /** Le pave change la hauteur de la boite : il faut remesurer apres coup. */
 function updatePad() {
   pad.hidden = !(COARSE.matches || NARROW.matches);
@@ -297,7 +308,15 @@ createKeyboardInput({
 });
 
 document.getElementById('play-solo').addEventListener('click', () => startGame('solo'));
-document.getElementById('play-multi').addEventListener('click', () => startGame('multi'));
+const multiButton = document.getElementById('play-multi');
+multiButton.addEventListener('click', () => startGame('multi'));
+
+const indisponible = multiplayerUnavailable();
+if (indisponible) {
+  multiButton.disabled = true;
+  multiButton.title = indisponible;
+  document.querySelector('.menu-note').textContent = indisponible;
+}
 document.getElementById('waiting-cancel').addEventListener('click', () => showMenu());
 document.getElementById('waiting-begin').addEventListener('click', () => transport?.begin());
 
