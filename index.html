@@ -35,7 +35,9 @@
         <dt>Score</dt><dd id="score">0</dd>
         <dt>Lignes</dt><dd id="lines">0</dd>
         <dt>Niveau</dt><dd id="level">1</dd>
-        <dt class="multi-only" hidden>En jeu</dt><dd class="multi-only" id="remaining" hidden>—</dd>
+        <!-- Toujours presente, masquee en solo : la faire apparaitre allongerait
+             le panneau, et toute la boite se recentrerait d'un coup. -->
+        <dt class="multi-only">En jeu</dt><dd class="multi-only" id="remaining">—</dd>
       </dl>
 
       <button id="toggle" type="button">Pause</button>

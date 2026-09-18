@@ -39,7 +39,6 @@ const waiting = document.getElementById('waiting');
 const waitingText = document.getElementById('waiting-text');
 const waitingBegin = document.getElementById('waiting-begin');
 const remaining = document.getElementById('remaining');
-const multiOnly = document.querySelectorAll('.multi-only');
 const pad = document.getElementById('pad');
 const game = document.querySelector('.game');
 
@@ -119,14 +118,6 @@ function loop(time) {
 }
 
 /**
- * Adresse du serveur de jeu, sur la machine qui sert la page.
- *
- * Le protocole suit celui de la page : un navigateur refuse une connexion ws://
- * depuis une page https, la tenir pour du contenu mixte. Sur un hebergement
- * statique (GitHub Pages) il n'y a de toute facon aucun serveur en face, et le
- * menu affiche alors l'echec.
- */
-/**
  * Le multijoueur suppose un serveur sur la machine qui sert la page. Sur un
  * hebergement statique (GitHub Pages) il n'y en a aucun, et une page https ne
  * peut de toute facon pas ouvrir une connexion vers un port arbitraire. Autant
@@ -139,6 +130,12 @@ function multiplayerUnavailable() {
     : '';
 }
 
+/**
+ * Adresse du serveur de jeu, sur la machine qui sert la page.
+ *
+ * Le protocole suit celui de la page : un navigateur refuse une connexion ws://
+ * depuis une page https, la tenant pour du contenu mixte.
+ */
 function serverUrl() {
   const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
   return `${scheme}://${location.hostname}:1985`;
@@ -220,7 +217,7 @@ function showMenu(message = '') {
   document.getElementById('overlay').hidden = true;
   waiting.hidden = true;
   waitingBegin.hidden = true;
-  for (const element of multiOnly) element.hidden = true;
+  game.classList.remove('multi');
   menu.hidden = false;
   menuError.textContent = message;
   menuError.hidden = message === '';
@@ -256,8 +253,9 @@ async function startGame(mode) {
     transport.onStatus(onNetworkStatus);
   }
 
-  // Le compte des joueurs encore en jeu n'a de sens qu'en reseau.
-  for (const element of multiOnly) element.hidden = mode !== 'multi';
+  // Le compte des joueurs encore en jeu n'a de sens qu'en reseau. Sa place
+  // reste reservee en solo : la CSS le masque sans le retirer de la mise en page.
+  game.classList.toggle('multi', mode === 'multi');
 
   transport.onAction((action, meta) => {
     // Le handicap est la seule action qui s'applique aux AUTRES : celui qui
