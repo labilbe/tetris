@@ -7,7 +7,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { COLS, ROWS, STATUS } from '../src/engine/constants.js';
+import { COLS, GARBAGE_COLOR, GARBAGE_SENT, ROWS, STATUS } from '../src/engine/constants.js';
 import { createState, reduce, tick } from '../src/engine/state.js';
 
 const SEED = 12345;
@@ -155,5 +155,78 @@ describe('deplacements', () => {
   it('reprend apres une pause', () => {
     const state = reduce(reduce(createState(SEED), { type: 'pause' }), { type: 'resume' });
     assert.equal(state.status, STATUS.PLAYING);
+  });
+});
+
+describe('lignes de handicap', () => {
+  /** Grille dont la ligne du bas porte une seule case, pour suivre sa montee. */
+  function avecUnRepere(state, colonne = 0) {
+    const grid = state.grid.map((row) => row.slice());
+    grid[ROWS - 1][colonne] = '#ffffff';
+    return { ...state, grid };
+  }
+
+  it('ajoute une ligne par trou demande', () => {
+    const state = createState(SEED);
+    const apres = reduce(state, { type: 'garbage', holes: [3, 7] });
+
+    assert.equal(apres.grid[ROWS - 1][7], null, 'le trou de la derniere ligne');
+    assert.equal(apres.grid[ROWS - 2][3], null, 'le trou de l avant-derniere');
+    assert.equal(apres.grid[ROWS - 1][0], GARBAGE_COLOR);
+    assert.equal(apres.grid[ROWS - 2][0], GARBAGE_COLOR);
+  });
+
+  it('fait monter la pile existante', () => {
+    const state = avecUnRepere(createState(SEED), 4);
+    const apres = reduce(state, { type: 'garbage', holes: [0, 0] });
+
+    assert.equal(apres.grid[ROWS - 3][4], '#ffffff', 'le repere a monte de deux');
+  });
+
+  it('ne perce qu une colonne par ligne', () => {
+    const apres = reduce(createState(SEED), { type: 'garbage', holes: [5] });
+    const vides = apres.grid[ROWS - 1].filter((cell) => cell === null);
+
+    assert.equal(vides.length, 1);
+  });
+
+  it('termine la partie quand la pile sort par le haut', () => {
+    const state = createState(SEED);
+    const grid = state.grid.map((row) => row.slice());
+    grid[0][0] = '#ffffff'; // quelque chose occupe deja la ligne du haut
+    const apres = reduce({ ...state, grid }, { type: 'garbage', holes: [2] });
+
+    assert.equal(apres.status, STATUS.OVER);
+  });
+
+  it('remonte la piece en cours si la pile la rattrape', () => {
+    const state = createState(SEED);
+    const descendue = { ...state, current: { ...state.current, y: ROWS - 2 } };
+    const apres = reduce(descendue, { type: 'garbage', holes: [0, 1, 2] });
+
+    assert.ok(apres.current.y < descendue.current.y, 'la piece a ete remontee');
+    assert.notEqual(apres.status, STATUS.OVER);
+  });
+
+  it('ignore un handicap vide', () => {
+    const state = createState(SEED);
+    assert.deepEqual(reduce(state, { type: 'garbage', holes: [] }), state);
+    assert.deepEqual(reduce(state, { type: 'garbage' }), state);
+  });
+
+  it('ne mute pas l etat recu', () => {
+    const state = createState(SEED);
+    const avant = JSON.stringify(state);
+    reduce(state, { type: 'garbage', holes: [1, 2] });
+
+    assert.equal(JSON.stringify(state), avant);
+  });
+
+  it('n envoie rien pour une seule ligne', () => {
+    // C'est la regle demandee : il faut au moins deux lignes pour genner.
+    assert.equal(GARBAGE_SENT[1] ?? 0, 0);
+    assert.equal(GARBAGE_SENT[2], 1);
+    assert.equal(GARBAGE_SENT[3], 2);
+    assert.equal(GARBAGE_SENT[4], 4);
   });
 });

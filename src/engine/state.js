@@ -11,6 +11,7 @@ import {
   BASE_DROP_MS,
   COLS,
   DROP_MS_PER_LEVEL,
+  GARBAGE_COLOR,
   HARD_DROP_POINTS_PER_ROW,
   KICK_OFFSETS,
   LINE_POINTS,
@@ -207,6 +208,44 @@ function applyGravity(state) {
   };
 }
 
+/**
+ * Ajoute des lignes de handicap par le bas : la pile remonte d'autant.
+ *
+ * Les colonnes trouees arrivent avec l'action, elles ne sont pas tirees ici.
+ * C'est ce qui rend le handicap identique chez tous : le tirer localement
+ * donnerait des trous differents a chacun, et le tirer avec le generateur du
+ * jeu ferait diverger la suite de pieces.
+ *
+ * @param {GameState} state
+ * @param {number[]} holes une colonne trouee par ligne ajoutee
+ */
+function addGarbage(state, holes) {
+  if (!Array.isArray(holes) || holes.length === 0) return state;
+
+  let grid = state.grid;
+  let toppedOut = false;
+
+  for (const hole of holes) {
+    // Ce qui occupait la ligne du haut est pousse hors du plateau : la pile a
+    // atteint le plafond.
+    if (grid[0].some((cell) => cell !== null)) toppedOut = true;
+
+    const row = new Array(COLS).fill(GARBAGE_COLOR);
+    if (hole >= 0 && hole < COLS) row[hole] = null;
+    grid = [...grid.slice(1), row];
+  }
+
+  // La piece en cours peut se retrouver dans la pile qui vient de monter : on
+  // la remonte d'autant que necessaire.
+  let current = state.current;
+  while (collides(grid, current) && current.y > -current.cells.length) {
+    current = { ...current, y: current.y - 1 };
+  }
+
+  const status = toppedOut || collides(grid, current) ? STATUS.OVER : state.status;
+  return { ...state, grid, current, status };
+}
+
 function move(state, dx) {
   if (collides(state.grid, state.current, dx, 0)) return state;
   return { ...state, current: { ...state.current, x: state.current.x + dx } };
@@ -274,6 +313,8 @@ export function reduce(state, action) {
       return softDrop(state);
     case 'hardDrop':
       return hardDrop(state);
+    case 'garbage':
+      return addGarbage(state, action.holes);
     default:
       return state;
   }

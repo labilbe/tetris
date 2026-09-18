@@ -4,7 +4,7 @@
  */
 
 import { createMusic } from './audio/music.js';
-import { STATUS } from './engine/constants.js';
+import { COLS, GARBAGE_SENT, STATUS } from './engine/constants.js';
 import { createState, reduce, tick } from './engine/state.js';
 import { createKeyboardInput } from './input/keyboard.js';
 import { createTouchInput } from './input/touch.js';
@@ -185,6 +185,25 @@ function onNetworkStatus(status) {
   }
 }
 
+/**
+ * Envoie un handicap aux autres joueurs apres un effacement de plusieurs
+ * lignes.
+ *
+ * Les colonnes trouees sont tirees ici, une fois, et voyagent avec l'action :
+ * tous les receveurs subissent donc exactement les memes lignes. Les tirer
+ * chez chacun donnerait des trous differents, et les tirer avec le generateur
+ * du jeu ferait diverger la suite de pieces.
+ *
+ * @param {number} cleared lignes effacees d'un coup
+ */
+function sendGarbage(cleared) {
+  const count = GARBAGE_SENT[cleared] ?? 0;
+  if (count === 0) return;
+
+  const holes = Array.from({ length: count }, () => Math.floor(Math.random() * COLS));
+  dispatch({ type: 'garbage', holes });
+}
+
 function showMenu(message = '') {
   if (transport) {
     transport.close();
@@ -241,10 +260,22 @@ async function startGame(mode) {
   for (const element of multiOnly) element.hidden = mode !== 'multi';
 
   transport.onAction((action, meta) => {
-    // Les actions de l'adversaire arrivent par le meme canal : elles ne doivent
-    // pas piloter notre plateau. Son propre plateau viendra a l'etape suivante.
+    // Le handicap est la seule action qui s'applique aux AUTRES : celui qui
+    // efface les lignes ne se penalise pas lui-meme.
+    if (action.type === 'garbage') {
+      if (meta.self) return;
+      state = reduce(state, action);
+      render();
+      return;
+    }
+
+    // Les actions des autres joueurs arrivent par le meme canal : elles ne
+    // doivent pas piloter notre plateau.
     if (!meta.self) return;
+
+    const avant = state.lines;
     state = reduce(state, action);
+    sendGarbage(state.lines - avant);
     render();
   });
 

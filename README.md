@@ -152,6 +152,20 @@ Une action n'est **pas** appliquée au moment de la frappe : elle part au serveu
 
 Les actions de l'adversaire arrivent par le même canal que les siennes et sont distinguées par `playerId`.
 
+### Lignes de handicap
+
+Effacer **au moins deux lignes d'un coup** envoie des lignes grises aux autres joueurs : elles arrivent par le bas, percées d'un trou, et font monter toute leur pile. Une seule ligne n'envoie rien.
+
+| Lignes effacées | Lignes envoyées |
+| --- | --- |
+| 2 | 1 |
+| 3 | 2 |
+| 4 | 4 |
+
+**Le handicap est identique chez tous les receveurs.** C'est une contrainte plus forte qu'il n'y paraît : les trous ne peuvent pas être tirés chez chacun, ce qui donnerait des plateaux différents, ni tirés avec le générateur du jeu, dont l'avance est synchronisée avec la suite de pièces. Ils sont donc tirés une fois par l'émetteur et **voyagent dans l'action** — `{ type: 'garbage', holes: [3, 7] }`.
+
+C'est aussi la seule action qui s'applique aux *autres* et non à soi : celui qui efface les lignes ne se pénalise pas. Si la pile qui monte pousse des blocs hors du plateau, c'est la fin de partie.
+
 ### Éliminations
 
 Un joueur qui perd est **éliminé**, et la partie continue entre les autres : son plateau se fige et affiche « Éliminé — la partie continue ». **Le dernier en jeu l'emporte** — « Gagné ! » pour lui, « Perdu » pour les autres. À deux, cela revient bien à « le premier qui perd a perdu ».
@@ -165,7 +179,6 @@ Le panneau affiche le nombre de joueurs encore en jeu. Une fois la partie termin
 ### Ce qui reste à faire
 
 - **Afficher les plateaux des autres joueurs.** Leurs actions sont déjà reçues ; reste à en dériver leurs plateaux. La difficulté n'est pas les actions mais la gravité, qui avance sur *leur* horloge : il faudra dater les actions pour rejouer leurs parties fidèlement.
-- **Les lignes envoyées aux adversaires**, qui font l'intérêt du jeu à plusieurs.
 - **Choisir son salon** : le code de salon existe dans le protocole, l'interface n'en propose pas encore.
 - **Reconnexion** : aujourd'hui, un joueur qui part met fin à la partie.
 - **La pause est locale** : elle arrête son propre plateau sans arrêter celui de l'adversaire. À deux, c'est un avantage indu — il faudra soit la mettre en commun, soit l'interdire en réseau.

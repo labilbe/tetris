@@ -19,6 +19,16 @@ export const TYPES = Object.keys(PIECES);
 /** Points par nombre de lignes effacees d'un coup, multiplies par le niveau. */
 export const LINE_POINTS = [0, 100, 300, 500, 800];
 
+/**
+ * Lignes de handicap envoyees aux autres joueurs selon le nombre de lignes
+ * effacees d'un coup. Une seule ligne n'envoie rien : il faut en reussir au
+ * moins deux pour genner quelqu'un.
+ */
+export const GARBAGE_SENT = { 2: 1, 3: 2, 4: 4 };
+
+/** Les lignes recues sont grises : elles ne viennent d'aucune piece. */
+export const GARBAGE_COLOR = '#6b7280';
+
 export const SOFT_DROP_POINTS = 1;
 export const HARD_DROP_POINTS_PER_ROW = 2;
 export const LINES_PER_LEVEL = 10;
