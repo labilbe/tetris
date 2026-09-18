@@ -145,6 +145,17 @@ kbd {
   color: var(--accent);
 }
 
+/* inline-block est indispensable : une transformation ne s'applique pas a un
+   element purement en ligne. */
+.menu h1 .mirrored {
+  display: inline-block;
+  transform: scaleX(-1);
+  /* letter-spacing ajoute son espace a droite de la lettre ; la symetrie la
+     fait passer a gauche. On la remet du bon cote. */
+  margin-left: -.1em;
+  margin-right: .1em;
+}
+
 .menu-actions {
   display: flex;
   flex-direction: column;
