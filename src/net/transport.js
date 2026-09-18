@@ -62,6 +62,16 @@ export function createLocalTransport(seed = randomSeed()) {
  * de divergence) se greffera ici, et nulle part ailleurs, parce que le moteur
  * est deterministe.
  */
+/**
+ * Delai au-dela duquel on renonce a joindre le serveur.
+ *
+ * Il ne couvre que l'ouverture de la connexion, jamais l'attente des autres
+ * joueurs, qui est legitime et peut durer. Sans lui, une adresse injoignable ne
+ * produit aucune erreur : le navigateur attend l'expiration TCP, et le joueur
+ * reste devant « Connexion au serveur… » sans explication.
+ */
+const CONNECT_TIMEOUT_MS = 8000;
+
 export function createWebSocketTransport(url, { room = DEFAULT_ROOM } = {}) {
   const actionListeners = new Set();
   const statusListeners = new Set();
@@ -79,7 +89,20 @@ export function createWebSocketTransport(url, { room = DEFAULT_ROOM } = {}) {
       return new Promise((resolve, reject) => {
         socket = new WebSocket(url);
 
+        // Arme seulement jusqu'a l'ouverture : une fois connecte, l'attente des
+        // autres joueurs n'a pas de limite.
+        const timeout = setTimeout(() => {
+          const error = new Error(
+            `Aucun serveur de jeu joignable sur ${url}. Le multijoueur demande `
+            + 'un serveur lancé avec « npm run server », sur la machine qui sert la page.',
+          );
+          notifyStatus({ kind: 'error', message: error.message });
+          socket.close();
+          reject(error);
+        }, CONNECT_TIMEOUT_MS);
+
         socket.addEventListener('open', () => {
+          clearTimeout(timeout);
           socket.send(encode({ type: CLIENT.JOIN, room }));
         });
 
@@ -131,6 +154,7 @@ export function createWebSocketTransport(url, { room = DEFAULT_ROOM } = {}) {
         });
 
         socket.addEventListener('error', () => {
+          clearTimeout(timeout);
           const error = new Error(
             `Aucun serveur de jeu joignable sur ${url}. Le multijoueur demande `
             + 'un serveur lancé avec « npm run server », sur la machine qui sert la page.',
@@ -140,6 +164,7 @@ export function createWebSocketTransport(url, { room = DEFAULT_ROOM } = {}) {
         });
 
         socket.addEventListener('close', () => {
+          clearTimeout(timeout);
           notifyStatus({ kind: 'closed' });
           // Si la partie n'avait pas commence, personne n'attend plus rien.
           reject(new Error('Connexion fermee avant le debut de la partie'));
