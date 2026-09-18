@@ -326,6 +326,13 @@ COARSE.addEventListener('change', updatePad);
 NARROW.addEventListener('change', updatePad);
 
 window.addEventListener('resize', fitToViewport);
+
+// La boite change aussi de taille sans que la fenetre bouge : apparition du
+// pave tactile, chargement des polices, contenu du panneau. On remesure alors.
+// Aucune boucle a craindre : la mise a l'echelle est une transformation, qui
+// ne modifie pas les dimensions observees.
+new ResizeObserver(fitToViewport).observe(game);
+
 updatePad();
 
 // Valeurs par defaut pour un nouveau joueur : un choix deja enregistre l'emporte.

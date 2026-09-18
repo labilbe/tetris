@@ -11,7 +11,19 @@
 </head>
 <body>
   <main class="game">
-    <canvas id="board" width="300" height="600" aria-label="Plateau de jeu"></canvas>
+    <!-- Le pave reste sous le plateau, en colonne comme en ligne : ailleurs, il
+         formerait une troisieme colonne et elargirait toute la boite. -->
+    <div class="board-column">
+      <canvas id="board" width="300" height="600" aria-label="Plateau de jeu"></canvas>
+
+      <div class="pad" id="pad" hidden>
+        <button type="button" data-action="left" aria-label="Déplacer à gauche">←</button>
+        <button type="button" data-action="rotate" aria-label="Rotation">⟳</button>
+        <button type="button" data-action="right" aria-label="Déplacer à droite">→</button>
+        <button type="button" data-action="soft" aria-label="Descente douce">↓</button>
+        <button type="button" data-action="hard" aria-label="Chute rapide">⤓</button>
+      </div>
+    </div>
 
     <aside class="panel">
       <section class="next">
@@ -53,15 +65,6 @@
         </ul>
       </section>
     </aside>
-
-    <!-- Commandes tactiles : affichees seulement sur ecran tactile ou etroit. -->
-    <div class="pad" id="pad" hidden>
-      <button type="button" data-action="left" aria-label="Déplacer à gauche">←</button>
-      <button type="button" data-action="rotate" aria-label="Rotation">⟳</button>
-      <button type="button" data-action="right" aria-label="Déplacer à droite">→</button>
-      <button type="button" data-action="soft" aria-label="Descente douce">↓</button>
-      <button type="button" data-action="hard" aria-label="Chute rapide">⤓</button>
-    </div>
 
     <div id="menu" class="overlay menu">
       <!-- Le R est retourne, clin d'oeil au Я cyrillique : le jeu est ne a Moscou. -->

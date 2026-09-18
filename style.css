@@ -102,16 +102,29 @@ button:hover { filter: brightness(1.1); }
 
 .option:hover { color: var(--text); }
 
+/* Plateau et commandes tactiles forment une colonne : le pave se place ainsi
+   sous le plateau quelle que soit la disposition de la boite. */
+.board-column {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
 /* Commandes tactiles. Cibles larges, et aucun geste du navigateur : sans
    touch-action, l'appui fait defiler ou zoomer la page. */
 .pad {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 8px;
-  width: 100%;
+  /* Large comme le plateau, jamais comme la boite entiere. */
+  width: 300px;
   touch-action: none;
   user-select: none;
 }
+
+/* display: grid ci-dessus l'emporterait sur le style navigateur de [hidden] :
+   le pave occuperait la place meme masque, et rabaisserait tout le plateau. */
+.pad[hidden] { display: none; }
 
 .pad button {
   padding: 0;
@@ -235,14 +248,10 @@ kbd {
   font-weight: 700;
 }
 
-/* Ecran etroit (telephone) : tout s'empile, et les commandes tactiles se
-   placent juste sous le plateau, a portee du pouce. */
+/* Ecran etroit (telephone) : le panneau passe sous le plateau. Le pave, lui,
+   reste sous le plateau dans les deux cas : c'est la colonne qui le porte. */
 @media (max-width: 700px) {
   .game { flex-direction: column; align-items: center; }
   .panel { width: 300px; }
   .help { display: none; }
-
-  #board { order: 1; }
-  .pad { order: 2; width: 300px; }
-  .panel { order: 3; }
 }
