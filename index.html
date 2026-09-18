@@ -55,9 +55,17 @@
       <h1>Tetris</h1>
       <div class="menu-actions">
         <button type="button" id="play-solo">Partie solo</button>
-        <button type="button" id="play-multi" disabled>Multijoueur</button>
+        <button type="button" id="play-multi">Multijoueur</button>
       </div>
-      <p class="menu-note">Le multijoueur attend son serveur : le transport réseau est en place, le serveur reste à écrire.</p>
+      <p class="menu-note">Le multijoueur réunit deux joueurs sur la même suite de pièces. Il demande le serveur : <code>npm run server</code>.</p>
+      <p class="menu-error" id="menu-error" hidden></p>
+    </div>
+
+    <div id="waiting" class="overlay menu" hidden>
+      <p id="waiting-text"></p>
+      <div class="menu-actions">
+        <button type="button" id="waiting-cancel">Retour au menu</button>
+      </div>
     </div>
 
     <div id="overlay" class="overlay" hidden>

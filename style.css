@@ -160,7 +160,16 @@ kbd {
 
 .menu button:disabled:hover { filter: none; }
 
-/* Plus specifique que .overlay p, qui viserait sinon ce paragraphe. */
+/* Plus specifiques que .overlay p, qui viserait sinon ces paragraphes. */
+.menu .menu-error {
+  max-width: 280px;
+  margin: 0;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.6;
+  color: #ef8a7a;
+}
+
 .menu .menu-note {
   max-width: 260px;
   margin: 0;

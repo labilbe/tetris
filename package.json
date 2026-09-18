@@ -6,7 +6,11 @@
   "type": "module",
   "scripts": {
     "start": "npx --yes serve . -l 1984",
-    "test": "node --test"
+    "test": "node --test",
+    "server": "node server/index.js"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "ws": "^8.21.3"
+  }
 }

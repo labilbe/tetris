@@ -1,6 +1,6 @@
 # Tetris
 
-Un Tetris jouable dans le navigateur, en HTML/Canvas et JavaScript vanilla. Aucune dépendance, aucun build.
+Un Tetris jouable dans le navigateur, en HTML/Canvas et JavaScript vanilla. Aucun build, et aucune dépendance côté navigateur — seul le serveur multijoueur en a une, `ws`.
 
 Le moteur de jeu est **pur et déterministe** : il n'accède ni au DOM, ni à l'horloge, ni à `Math.random`. C'est ce qui permet de le tester sous Node et, à terme, de faire jouer plusieurs joueurs sur la même partie.
 
@@ -41,7 +41,7 @@ npm test           # tests du moteur, sans navigateur
 
 ## Menu
 
-Au chargement, un menu propose « Partie solo » et « Multijoueur ». Le multijoueur est désactivé tant que le serveur n'est pas écrit — le transport réseau, lui, est déjà en place.
+Au chargement, un menu propose « Partie solo » et « Multijoueur ». Le multijoueur demande le serveur (`npm run server`) ; sans lui, le menu affiche l'échec de connexion et reste utilisable en solo.
 
 Ce menu joue un second rôle : le clic qui lance la partie est aussi le geste que les navigateurs exigent avant d'autoriser le son. La musique démarre donc avec la partie, sans rien demander de plus au joueur.
 
@@ -86,13 +86,18 @@ src/
     midi.js       lecteur de fichier MIDI, sans dépendance
     music.js      synthèse Web Audio, calée sur l'état du jeu
   net/
+    protocol.js   vocabulaire réseau, partagé avec le serveur
     transport.js  achemine les actions (local, ou WebSocket)
   view/
     preferences.js réglages locaux (projection, musique)
   main.js       câblage : DOM + horloge + boucle de jeu
+server/
+  rooms.js      salons : qui attend qui, avec quelle graine (fonctions pures)
+  index.js      le réseau, et rien d'autre
 test/
   engine.test.js  tests du moteur
   midi.test.js    tests du lecteur MIDI
+  rooms.test.js   tests des salons
 ```
 
 Trois règles tiennent l'ensemble :
@@ -101,19 +106,40 @@ Trois règles tiennent l'ensemble :
 2. **Le temps est un paramètre**, jamais une lecture d'horloge interne. Une partie peut donc être rejouée à l'identique — c'est la base de la réconciliation client/serveur.
 3. **Les commandes sont des actions sérialisables** (`{ type: 'move', dx: -1 }`), jamais des appels directs. Ce sont elles qui transiteront sur le réseau.
 
-### Vers le multijoueur
+## Multijoueur
 
-Le seam est `src/net/transport.js`. `createLocalTransport` renvoie les actions immédiatement ; `createWebSocketTransport` les fait passer par un serveur qui impose la graine et l'ordre des actions. Le serveur reste à écrire — le transport WebSocket n'a donc pas encore été testé contre une implémentation réelle.
+```bash
+npm run server     # serveur de jeu sur le port 1985
+npm start          # dans un autre terminal, la page sur le port 1984
+```
 
-Protocole prévu :
+Chaque joueur ouvre la page et choisit « Multijoueur ». Le premier patiente, la partie démarre à l'arrivée du second.
+
+### Ce qui circule sur le réseau
+
+**Ni plateau, ni pièces : une graine, puis des actions.** Le moteur étant déterministe, la même graine suivie de la même suite d'actions produit le même jeu partout. Le serveur n'a donc aucune règle de Tetris à connaître ; il réunit les joueurs, impose la graine et donne un ordre unique aux actions.
 
 ```
-serveur -> client : { type: 'start', seed }
-serveur -> client : { type: 'action', playerId, action }
+client  -> serveur : { type: 'join', room }
 client  -> serveur : { type: 'action', action }
+serveur -> client  : { type: 'waiting', players, capacity }
+serveur -> client  : { type: 'start', seed, playerId, players }
+serveur -> client  : { type: 'action', playerId, action }
+serveur -> client  : { type: 'left', playerId }
 ```
 
-La graine **doit** venir du serveur : sans elle, deux joueurs ne voient pas la même séquence de pièces.
+Le vocabulaire est défini une seule fois, dans `src/net/protocol.js`, importé par le client comme par le serveur : les deux côtés ne peuvent pas diverger.
+
+Une action n'est **pas** appliquée au moment de la frappe : elle part au serveur et n'agit qu'à son retour. C'est le choix le plus simple, au prix d'un aller-retour. La prédiction locale (appliquer tout de suite, puis rejouer depuis le dernier état confirmé) se greffera dans le transport, et nulle part ailleurs.
+
+Les actions de l'adversaire arrivent par le même canal que les siennes et sont distinguées par `playerId`.
+
+### Ce qui reste à faire
+
+- **Afficher le plateau de l'adversaire.** Ses actions sont déjà reçues ; reste à en dériver son plateau. La difficulté n'est pas les actions mais la gravité, qui avance sur *son* horloge : il faudra dater les actions pour rejouer sa partie fidèlement.
+- **Les lignes envoyées à l'adversaire**, qui font l'intérêt du jeu à deux.
+- **Choisir son salon** : le code de salon existe dans le protocole, l'interface n'en propose pas encore.
+- **Reconnexion** : aujourd'hui, un joueur qui part met fin à la partie.
 
 ## Musique
 

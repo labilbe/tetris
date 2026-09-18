@@ -7,7 +7,7 @@ import { createMusic } from './audio/music.js';
 import { randomSeed } from './engine/rng.js';
 import { createState, reduce, tick } from './engine/state.js';
 import { createKeyboardInput } from './input/keyboard.js';
-import { createLocalTransport } from './net/transport.js';
+import { createLocalTransport, createWebSocketTransport } from './net/transport.js';
 import { createRenderer } from './render/canvas.js';
 import { createHud } from './render/hud.js';
 import { readPreference, writePreference } from './view/preferences.js';
@@ -33,6 +33,9 @@ const music = createMusic();
 const ghostCheckbox = document.getElementById('ghost');
 const musicCheckbox = document.getElementById('music');
 const menu = document.getElementById('menu');
+const menuError = document.getElementById('menu-error');
+const waiting = document.getElementById('waiting');
+const waitingText = document.getElementById('waiting-text');
 const game = document.querySelector('.game');
 
 /**
@@ -98,10 +101,49 @@ function loop(time) {
   const delta = lastTime === null ? 0 : time - lastTime;
   lastTime = time;
 
-  state = tick(state, delta);
-  render();
+  // Pas de partie en cours (menu, attente d'un adversaire) : le temps ne doit
+  // pas avancer, sinon les pieces tomberaient derriere l'ecran d'accueil.
+  if (state && transport) {
+    state = tick(state, delta);
+    render();
+  }
 
   requestAnimationFrame(loop);
+}
+
+/** Adresse du serveur de jeu, sur la machine qui sert la page. */
+function serverUrl() {
+  return `ws://${location.hostname}:1985`;
+}
+
+/** Messages du serveur qui concernent l'attente et la connexion, pas le jeu. */
+function onNetworkStatus(status) {
+  switch (status.kind) {
+    case 'waiting':
+      waitingText.textContent = `En attente d'un adversaire… (${status.players}/${status.capacity})`;
+      break;
+    case 'left':
+      // La partie perd son sens des que l'adversaire n'est plus la.
+      showMenu("L'adversaire a quitté la partie.");
+      break;
+    case 'closed':
+      if (state) showMenu('La connexion au serveur a été perdue.');
+      break;
+    default:
+      break;
+  }
+}
+
+function showMenu(message = '') {
+  if (transport) {
+    transport.close();
+    transport = null;
+  }
+  state = undefined;
+  waiting.hidden = true;
+  menu.hidden = false;
+  menuError.textContent = message;
+  menuError.hidden = message === '';
 }
 
 /**
@@ -111,22 +153,44 @@ function loop(time) {
  * exige pour autoriser le son : c'est pour cela que la musique part en meme
  * temps que la partie, sans rien demander de plus au joueur.
  *
- * @param {'solo'} mode le multijoueur attend son serveur
+ * @param {'solo' | 'multi'} mode
  */
 async function startGame(mode) {
   music.unlock();
 
   menu.hidden = true;
+  menuError.hidden = true;
 
   // Le mode choisit le transport, et rien d'autre : le reste du jeu ignore
   // s'il joue en solo ou en reseau.
-  transport = createLocalTransport();
-  transport.onAction((action) => {
+  transport = mode === 'multi'
+    ? createWebSocketTransport(serverUrl())
+    : createLocalTransport();
+
+  if (mode === 'multi') {
+    waiting.hidden = false;
+    waitingText.textContent = 'Connexion au serveur…';
+    transport.onStatus(onNetworkStatus);
+  }
+
+  transport.onAction((action, meta) => {
+    // Les actions de l'adversaire arrivent par le meme canal : elles ne doivent
+    // pas piloter notre plateau. Son propre plateau viendra a l'etape suivante.
+    if (!meta.self) return;
     state = reduce(state, action);
     render();
   });
 
-  const { seed } = await transport.start();
+  const pending = transport;
+  let seed;
+  try {
+    ({ seed } = await transport.start());
+  } catch (error) {
+    if (transport === pending) showMenu(error.message);
+    return;
+  }
+
+  waiting.hidden = true;
   state = createState(seed);
   lastTime = null;
   render();
@@ -161,6 +225,8 @@ createKeyboardInput({
 });
 
 document.getElementById('play-solo').addEventListener('click', () => startGame('solo'));
+document.getElementById('play-multi').addEventListener('click', () => startGame('multi'));
+document.getElementById('waiting-cancel').addEventListener('click', () => showMenu());
 
 window.addEventListener('resize', fitToViewport);
 fitToViewport();
