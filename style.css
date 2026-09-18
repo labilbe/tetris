@@ -12,11 +12,9 @@
 body {
   margin: 0;
   /* dvh plutot que vh : sur mobile, vh ignore les barres du navigateur. */
-  height: 100dvh;
+  min-height: 100dvh;
   display: grid;
   place-items: center;
-  /* Le jeu est mis a l'echelle pour tenir : plus rien ne doit deborder. */
-  overflow: hidden;
   background: var(--bg);
   color: var(--text);
   font-family: "Segoe UI", system-ui, sans-serif;
@@ -27,11 +25,6 @@ body {
   display: flex;
   gap: 24px;
   padding: 24px;
-  /* --fit est calcule en JS d'apres la place disponible : sur un ecran court
-     (portable en mise a l'echelle Windows), le jeu retrecit au lieu d'etre
-     coupe. La mise a l'echelle preserve exactement les proportions. */
-  transform: scale(var(--fit, 1));
-  transform-origin: center;
   background: var(--panel);
   border-radius: 12px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, .5);
@@ -41,6 +34,26 @@ canvas {
   background: var(--grid);
   border-radius: 6px;
   display: block;
+}
+
+/*
+ * Le plateau se cale sur la hauteur disponible.
+ *
+ * C'est une contrainte CSS, pas une mesure prise en JavaScript : elle ne depend
+ * d'aucun minutage et s'applique des le premier rendu. Le canvas garde ses
+ * 300x600 internes — le jeu dessine toujours dans les memes coordonnees — et
+ * width: auto preserve les proportions.
+ *
+ * La reserve couvre les marges de la boite ; elle augmente quand le pave
+ * tactile occupe le bas de la colonne.
+ */
+#board {
+  height: min(600px, calc(100dvh - var(--reserve, 64px)));
+  width: auto;
+}
+
+.game.with-pad {
+  --reserve: 200px;
 }
 
 .panel {
@@ -246,6 +259,13 @@ kbd {
   margin: 0;
   font-size: 28px;
   font-weight: 700;
+}
+
+/* Ecran court (portable en mise a l'echelle Windows) : la liste des commandes
+   est la partie la plus haute du panneau, et la moins utile une fois qu'on les
+   connait. On la retire pour rendre sa place au plateau. */
+@media (max-height: 760px) {
+  .help { display: none; }
 }
 
 /* Ecran etroit (telephone) : le panneau passe sous le plateau. Le pave, lui,

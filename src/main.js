@@ -48,43 +48,11 @@ const game = document.querySelector('.game');
 const COARSE = matchMedia('(pointer: coarse)');
 const NARROW = matchMedia('(max-width: 700px)');
 
-/**
- * Met le jeu a l'echelle de la place disponible.
- *
- * La taille du plateau est fixe (10 x 20 cases de 30 px) ; sur un ecran court
- * — un portable en mise a l'echelle Windows, par exemple — la boite depasserait
- * et le bas serait coupe. On la reduit donc plutot que de la rogner.
- */
-function fitToViewport() {
-  // offsetWidth et offsetHeight sont des mesures de mise en page : la
-  // transformation ne les affecte pas, donc pas de boucle de retroaction.
-  const { offsetWidth: width, offsetHeight: height } = game;
-  if (!width || !height) return;
-
-  const marge = 16;
-  const fit = Math.min(
-    1,
-    (window.innerWidth - marge) / width,
-    (window.innerHeight - marge) / height,
-  );
-  game.style.setProperty('--fit', fit);
-}
-
-/**
- * Le multijoueur suppose un serveur sur la machine qui sert la page. Sur un
- * hebergement statique (GitHub Pages) il n'y en a aucun, et une page https ne
- * peut de toute facon pas ouvrir une connexion vers un port arbitraire. Autant
- * le dire tout de suite plutot que de laisser le joueur attendre une connexion
- * qui n'aboutira pas.
- */
-function multiplayerUnavailable() {
-  return location.protocol === 'https:' ? 'Le multijoueur demande un serveur : il n’est pas disponible sur la version en ligne.' : '';
-}
-
-/** Le pave change la hauteur de la boite : il faut remesurer apres coup. */
+/** Le pave tactile occupe le bas de la colonne : le plateau lui laisse la place. */
 function updatePad() {
-  pad.hidden = !(COARSE.matches || NARROW.matches);
-  fitToViewport();
+  const visible = COARSE.matches || NARROW.matches;
+  pad.hidden = !visible;
+  game.classList.toggle('with-pad', visible);
 }
 
 const GHOST_PREFERENCE = 'tetris.ghost';
@@ -325,13 +293,6 @@ createTouchInput({ pad, onGameAction: dispatch });
 COARSE.addEventListener('change', updatePad);
 NARROW.addEventListener('change', updatePad);
 
-window.addEventListener('resize', fitToViewport);
-
-// La boite change aussi de taille sans que la fenetre bouge : apparition du
-// pave tactile, chargement des polices, contenu du panneau. On remesure alors.
-// Aucune boucle a craindre : la mise a l'echelle est une transformation, qui
-// ne modifie pas les dimensions observees.
-new ResizeObserver(fitToViewport).observe(game);
 
 updatePad();
 
