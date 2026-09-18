@@ -38,6 +38,9 @@ const menu = document.getElementById('menu');
 const menuError = document.getElementById('menu-error');
 const waiting = document.getElementById('waiting');
 const waitingText = document.getElementById('waiting-text');
+const waitingBegin = document.getElementById('waiting-begin');
+const remaining = document.getElementById('remaining');
+const multiOnly = document.querySelectorAll('.multi-only');
 const game = document.querySelector('.game');
 
 /**
@@ -133,12 +136,26 @@ function serverUrl() {
 /** Messages du serveur qui concernent l'attente et la connexion, pas le jeu. */
 function onNetworkStatus(status) {
   switch (status.kind) {
-    case 'waiting':
-      waitingText.textContent = `En attente d'un adversaire… (${status.players}/${status.capacity})`;
+    case 'waiting': {
+      const joueurs = `${status.players} joueur${status.players > 1 ? 's' : ''}`;
+      waitingText.textContent = `Salon : ${joueurs} sur ${status.max}`;
+      // Attendre le salon plein rendrait toute partie a trois impossible :
+      // les presents lancent eux-memes, des qu'ils sont assez nombreux.
+      waitingBegin.hidden = status.players < status.min;
+      break;
+    }
+    case 'start':
+      remaining.textContent = status.players.length;
+      break;
+    case 'eliminated':
+      if (status.self) outcome = 'eliminated';
+      remaining.textContent = status.remaining;
+      render();
       break;
     case 'finished':
-      // Le premier joueur a perdre met fin a la partie des deux.
-      outcome = status.self ? 'lost' : 'won';
+      // Il ne reste qu'un joueur en jeu : c'est lui qui l'emporte.
+      outcome = status.self ? 'won' : 'lost';
+      remaining.textContent = status.winner ? '1' : '0';
       render();
       break;
     case 'left':
@@ -165,6 +182,8 @@ function showMenu(message = '') {
   // Sans cela, « Perdu » resterait affiche sous le menu.
   document.getElementById('overlay').hidden = true;
   waiting.hidden = true;
+  waitingBegin.hidden = true;
+  for (const element of multiOnly) element.hidden = true;
   menu.hidden = false;
   menuError.textContent = message;
   menuError.hidden = message === '';
@@ -195,9 +214,13 @@ async function startGame(mode) {
 
   if (mode === 'multi') {
     waiting.hidden = false;
+    waitingBegin.hidden = true;
     waitingText.textContent = 'Connexion au serveur…';
     transport.onStatus(onNetworkStatus);
   }
+
+  // Le compte des joueurs encore en jeu n'a de sens qu'en reseau.
+  for (const element of multiOnly) element.hidden = mode !== 'multi';
 
   transport.onAction((action, meta) => {
     // Les actions de l'adversaire arrivent par le meme canal : elles ne doivent
@@ -253,6 +276,7 @@ createKeyboardInput({
 document.getElementById('play-solo').addEventListener('click', () => startGame('solo'));
 document.getElementById('play-multi').addEventListener('click', () => startGame('multi'));
 document.getElementById('waiting-cancel').addEventListener('click', () => showMenu());
+document.getElementById('waiting-begin').addEventListener('click', () => transport?.begin());
 document.getElementById('to-menu').addEventListener('click', () => showMenu());
 
 window.addEventListener('resize', fitToViewport);

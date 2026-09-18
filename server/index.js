@@ -2,9 +2,9 @@
  * Serveur de jeu en reseau.
  *
  * Son role est volontairement etroit : reunir les joueurs, imposer la graine,
- * et relayer les actions dans un ordre unique. Il ne connait pas les regles du
- * Tetris et ne calcule aucun plateau — c'est le moteur, identique chez tous les
- * joueurs, qui derive l'etat des actions recues.
+ * relayer les actions dans un ordre unique et arbitrer les eliminations. Il ne
+ * connait pas les regles du Tetris et ne calcule aucun plateau — c'est le
+ * moteur, identique chez tous les joueurs, qui derive l'etat des actions.
  *
  *   npm run server
  */
@@ -15,7 +15,7 @@ import { WebSocketServer } from 'ws';
 
 import { randomSeed } from '../src/engine/rng.js';
 import { CLIENT, DEFAULT_ROOM, SERVER, encode, decode } from '../src/net/protocol.js';
-import { createLobby, finish, join, leave, roomOf, waitingStatus } from './rooms.js';
+import { alive, begin, createLobby, eliminate, join, leave, roomOf, waitingStatus } from './rooms.js';
 
 const PORT = Number(process.env.PORT ?? 1985);
 
@@ -29,10 +29,34 @@ function send(playerId, message) {
   if (socket && socket.readyState === socket.OPEN) socket.send(encode(message));
 }
 
-function sendToRoom(room, message, { except } = {}) {
-  for (const playerId of room.players) {
-    if (playerId !== except) send(playerId, message);
+function sendToRoom(room, message) {
+  for (const playerId of room.players) send(playerId, message);
+}
+
+function announceWaiting(room) {
+  sendToRoom(room, { type: SERVER.WAITING, ...waitingStatus(lobby, room) });
+}
+
+/** Lance la partie et distribue la graine commune. */
+function startRoom(code) {
+  const result = begin(lobby, code);
+  lobby = result.lobby;
+  if (!result.started) return;
+
+  const room = result.room;
+  // Tous recoivent la meme graine — c'est elle qui rend les parties identiques
+  // — mais chacun recoit aussi son identifiant, pour distinguer ensuite ses
+  // actions de celles des autres.
+  for (const id of room.players) {
+    send(id, {
+      type: SERVER.START,
+      room: room.code,
+      seed: room.seed,
+      playerId: id,
+      players: room.players,
+    });
   }
+  console.log(`[salon ${room.code}] partie lancee a ${room.players.length} (graine ${room.seed})`);
 }
 
 function handleJoin(playerId, message) {
@@ -44,63 +68,80 @@ function handleJoin(playerId, message) {
   lobby = result.lobby;
 
   if (!result.joined) {
-    send(playerId, { type: SERVER.ERROR, message: 'Ce salon est complet ou la partie a deja commence.' });
+    send(playerId, {
+      type: SERVER.ERROR,
+      message: 'Ce salon est complet ou la partie a deja commence.',
+    });
     return;
   }
 
-  if (result.starts) {
-    // Tous recoivent la meme graine — c'est elle qui rend les parties
-    // identiques — mais chacun recoit aussi son propre identifiant, pour
-    // distinguer ensuite ses actions de celles de l'adversaire.
-    for (const id of result.room.players) {
-      send(id, {
-        type: SERVER.START,
-        room: result.room.code,
-        seed: result.room.seed,
-        playerId: id,
-        players: result.room.players,
-      });
-    }
-    console.log(`[salon ${result.room.code}] partie lancee (graine ${result.room.seed})`);
+  console.log(`[salon ${code}] ${result.room.players.length}/${lobby.max} joueur(s)`);
+
+  // Salon plein : inutile de faire attendre davantage.
+  if (result.full) startRoom(code);
+  else announceWaiting(result.room);
+}
+
+function handleBegin(playerId) {
+  const room = roomOf(lobby, playerId);
+  if (!room || room.started) return;
+
+  if (room.players.length < lobby.min) {
+    send(playerId, {
+      type: SERVER.ERROR,
+      message: `Il faut au moins ${lobby.min} joueurs pour commencer.`,
+    });
     return;
   }
 
-  sendToRoom(result.room, { type: SERVER.WAITING, ...waitingStatus(lobby, result.room) });
-  console.log(`[salon ${code}] ${result.room.players.length}/${lobby.capacity} joueur(s)`);
+  startRoom(room.code);
 }
 
 function handleAction(playerId, message) {
   const room = roomOf(lobby, playerId);
-  if (!room || !room.started || !message.action) return;
+  if (!room || !room.started || room.finished || !message.action) return;
 
   // Relais a tout le monde, emetteur compris : l'ordre du serveur fait foi, et
   // chacun applique la meme suite d'actions.
   sendToRoom(room, { type: SERVER.ACTION, playerId, action: message.action });
 }
 
-function handleOver(playerId) {
-  const result = finish(lobby, playerId);
+/** Sortie de jeu d'un joueur : defaite ou depart. */
+function handleElimination(playerId) {
+  const result = eliminate(lobby, playerId);
   lobby = result.lobby;
+  if (!result.eliminated) return;
 
-  // Deja termine : c'est l'autre joueur qui a perdu en premier, le resultat
-  // est fixe.
-  if (!result.room || result.already) return;
+  const room = result.room;
 
-  sendToRoom(result.room, { type: SERVER.FINISHED, loser: playerId });
-  console.log(`[salon ${result.room.code}] partie terminee`);
+  if (result.finished) {
+    sendToRoom(room, { type: SERVER.FINISHED, winner: room.winner });
+    console.log(`[salon ${room.code}] partie terminee (vainqueur ${room.winner ?? 'aucun'})`);
+    return;
+  }
+
+  // La partie continue entre les survivants.
+  sendToRoom(room, { type: SERVER.ELIMINATED, playerId, remaining: alive(room).length });
+  console.log(`[salon ${room.code}] elimination (${alive(room).length} en jeu)`);
 }
 
 function handleDisconnect(playerId) {
+  // Un depart en pleine partie vaut elimination : on l'arbitre avant de retirer
+  // le joueur du salon, sinon il n'y serait plus pour etre elimine.
+  handleElimination(playerId);
+
   const result = leave(lobby, playerId);
   lobby = result.lobby;
   sockets.delete(playerId);
 
   if (!result.room) return;
 
-  for (const id of result.remaining) {
-    send(id, { type: SERVER.LEFT, playerId });
-  }
-  console.log(`[salon ${result.room.code}] depart d'un joueur (${result.remaining.length} restant(s))`);
+  for (const id of result.remaining) send(id, { type: SERVER.LEFT, playerId });
+
+  // Depart avant le debut : ceux qui patientent doivent voir le compte baisser.
+  if (!result.room.started && result.remaining.length > 0) announceWaiting(result.room);
+
+  console.log(`[salon ${result.room.code}] depart (${result.remaining.length} restant(s))`);
 }
 
 const server = new WebSocketServer({ port: PORT });
@@ -114,12 +155,13 @@ server.on('connection', (socket) => {
     if (!message) return; // message illisible : on l'ignore plutot que de rompre
 
     if (message.type === CLIENT.JOIN) handleJoin(playerId, message);
+    else if (message.type === CLIENT.BEGIN) handleBegin(playerId);
     else if (message.type === CLIENT.ACTION) handleAction(playerId, message);
-    else if (message.type === CLIENT.OVER) handleOver(playerId);
+    else if (message.type === CLIENT.OVER) handleElimination(playerId);
   });
 
   socket.on('close', () => handleDisconnect(playerId));
   socket.on('error', () => handleDisconnect(playerId));
 });
 
-console.log(`Serveur de jeu en ecoute sur le port ${PORT}`);
+console.log(`Serveur de jeu en ecoute sur le port ${PORT} (${lobby.min} a ${lobby.max} joueurs)`);

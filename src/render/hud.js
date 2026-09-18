@@ -7,10 +7,12 @@ const OVERLAY_TEXT = {
   [STATUS.OVER]: 'Game over',
 };
 
-/** En reseau, la partie s'arrete pour les deux joueurs : le resultat prime. */
+/** En reseau, le resultat prime sur l'etat du plateau. */
 const OUTCOME_TEXT = {
   won: 'Gagné !',
   lost: 'Perdu',
+  // A plus de deux, on sort de la partie sans qu'elle soit finie pour autant.
+  eliminated: 'Éliminé — la partie continue',
 };
 
 /**
@@ -22,7 +24,7 @@ export function createHud({ score, lines, level, toggle, overlay, overlayText, r
   return {
     /**
      * @param {import('../engine/state.js').GameState} state
-     * @param {'won' | 'lost' | null} [outcome] resultat d'une partie en reseau
+     * @param {'won' | 'lost' | 'eliminated' | null} [outcome] issue d'une partie en reseau
      */
     update(state, outcome = null) {
       score.textContent = state.score;

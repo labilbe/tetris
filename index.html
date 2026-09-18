@@ -21,6 +21,7 @@
         <dt>Score</dt><dd id="score">0</dd>
         <dt>Lignes</dt><dd id="lines">0</dd>
         <dt>Niveau</dt><dd id="level">1</dd>
+        <dt class="multi-only" hidden>En jeu</dt><dd class="multi-only" id="remaining" hidden>—</dd>
       </dl>
 
       <button id="toggle" type="button">Pause</button>
@@ -64,6 +65,7 @@
     <div id="waiting" class="overlay menu" hidden>
       <p id="waiting-text"></p>
       <div class="menu-actions">
+        <button type="button" id="waiting-begin" hidden>Lancer la partie</button>
         <button type="button" id="waiting-cancel">Retour au menu</button>
       </div>
     </div>

@@ -11,22 +11,25 @@
 /** Messages du client vers le serveur. */
 export const CLIENT = {
   JOIN: 'join', // { type, room }
+  BEGIN: 'begin', // { type } — lancer la partie sans attendre le salon plein
   ACTION: 'action', // { type, action }
   OVER: 'over', // { type } — j'ai perdu
 };
 
 /** Messages du serveur vers le client. */
 export const SERVER = {
-  WAITING: 'waiting', // { type, room, players, capacity }
+  WAITING: 'waiting', // { type, room, players, min, max }
   START: 'start', // { type, room, seed, playerId, players }
   ACTION: 'action', // { type, playerId, action }
-  FINISHED: 'finished', // { type, loser } — la partie s'arrete pour tous
+  ELIMINATED: 'eliminated', // { type, playerId, remaining }
+  FINISHED: 'finished', // { type, winner } — le dernier en jeu l'emporte
   LEFT: 'left', // { type, playerId }
   ERROR: 'error', // { type, message }
 };
 
-/** Nombre de joueurs par partie. */
-export const CAPACITY = 2;
+/** Il faut au moins deux joueurs pour une partie, et le salon en accepte MAX. */
+export const MIN_PLAYERS = 2;
+export const MAX_PLAYERS = 6;
 
 export const DEFAULT_ROOM = 'partie';
 

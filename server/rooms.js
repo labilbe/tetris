@@ -1,26 +1,44 @@
 /**
- * Salons du jeu en reseau : qui attend qui, et avec quelle graine.
+ * Salons du jeu en reseau : qui attend qui, avec quelle graine, et qui reste
+ * en jeu.
  *
  * Volontairement sans socket ni horloge : ce sont des fonctions pures sur un
  * etat simple, donc testables directement, comme le moteur du jeu. Le fichier
  * server/index.js se charge du reseau et n'a plus de logique a lui.
  */
 
-import { CAPACITY } from '../src/net/protocol.js';
+import { MAX_PLAYERS, MIN_PLAYERS } from '../src/net/protocol.js';
 
 /**
- * @typedef {{ code: string, seed: number, players: string[], started: boolean, finished?: boolean }} Room
- * @typedef {{ capacity: number, rooms: Record<string, Room> }} Lobby
+ * @typedef {{
+ *   code: string,
+ *   seed: number,
+ *   players: string[],
+ *   eliminated: string[],
+ *   started: boolean,
+ *   finished: boolean,
+ *   winner: string | null,
+ * }} Room
+ * @typedef {{ min: number, max: number, rooms: Record<string, Room> }} Lobby
  */
 
 /** @returns {Lobby} */
-export function createLobby(capacity = CAPACITY) {
-  return { capacity, rooms: {} };
+export function createLobby({ min = MIN_PLAYERS, max = MAX_PLAYERS } = {}) {
+  return { min, max, rooms: {} };
 }
 
 /** Salon d'un joueur, ou null s'il n'en a pas. */
 export function roomOf(lobby, playerId) {
   return Object.values(lobby.rooms).find((room) => room.players.includes(playerId)) ?? null;
+}
+
+/** Joueurs encore en jeu. */
+export function alive(room) {
+  return room.players.filter((id) => !room.eliminated.includes(id));
+}
+
+function put(lobby, room) {
+  return { ...lobby, rooms: { ...lobby.rooms, [room.code]: room } };
 }
 
 /**
@@ -29,41 +47,88 @@ export function roomOf(lobby, playerId) {
  * La graine est fixee a la creation du salon et ne change plus : c'est elle qui
  * garantit que tous les joueurs verront la meme suite de pieces.
  *
- * @param {Lobby} lobby
- * @param {string} code
- * @param {string} playerId
- * @param {number} seed graine a utiliser si le salon est cree
- * @returns {{ lobby: Lobby, room: Room, joined: boolean, starts: boolean }}
+ * @returns {{ lobby: Lobby, room: Room, joined: boolean, full: boolean }}
  */
 export function join(lobby, code, playerId, seed) {
   const existing = lobby.rooms[code];
 
   if (existing && existing.players.includes(playerId)) {
-    return { lobby, room: existing, joined: false, starts: false };
+    return { lobby, room: existing, joined: false, full: false };
   }
 
   // Un salon plein ou deja lance n'accepte personne : sinon l'arrivant
   // manquerait le debut et jouerait une autre partie que les autres.
-  if (existing && (existing.started || existing.players.length >= lobby.capacity)) {
-    return { lobby, room: existing, joined: false, starts: false };
+  if (existing && (existing.started || existing.players.length >= lobby.max)) {
+    return { lobby, room: existing, joined: false, full: true };
   }
 
-  const base = existing ?? { code, seed, players: [], started: false };
-  const players = [...base.players, playerId];
-  const starts = players.length >= lobby.capacity;
-  const room = { ...base, players, started: base.started || starts };
+  const base = existing ?? {
+    code,
+    seed,
+    players: [],
+    eliminated: [],
+    started: false,
+    finished: false,
+    winner: null,
+  };
 
+  const room = { ...base, players: [...base.players, playerId] };
   return {
-    lobby: { ...lobby, rooms: { ...lobby.rooms, [code]: room } },
+    lobby: put(lobby, room),
     room,
     joined: true,
-    starts,
+    full: room.players.length >= lobby.max,
   };
 }
 
 /**
- * Retire un joueur. Un salon vide disparait ; un salon entame reste marque
- * comme lance, car la partie de ceux qui restent, elle, a bien commence.
+ * Lance la partie d'un salon.
+ *
+ * Attendre que le salon soit plein rendrait toute partie a trois impossible
+ * quand le maximum est six : les joueurs presents decident eux-memes du depart,
+ * des lors qu'ils sont assez nombreux.
+ *
+ * @returns {{ lobby: Lobby, room: Room | null, started: boolean }}
+ */
+export function begin(lobby, code) {
+  const room = lobby.rooms[code];
+  if (!room || room.started) return { lobby, room: room ?? null, started: false };
+  if (room.players.length < lobby.min) return { lobby, room, started: false };
+
+  const started = { ...room, started: true };
+  return { lobby: put(lobby, started), room: started, started: true };
+}
+
+/**
+ * Elimine un joueur : il a perdu, ou il est parti.
+ *
+ * La partie s'arrete quand il ne reste qu'un joueur — ou aucun. A deux, cela
+ * revient bien a « le premier qui perd a perdu ».
+ *
+ * @returns {{ lobby: Lobby, room: Room | null, eliminated: boolean, finished: boolean, remaining: string[] }}
+ */
+export function eliminate(lobby, playerId) {
+  const room = roomOf(lobby, playerId);
+  const none = { lobby, room: null, eliminated: false, finished: false, remaining: [] };
+  if (!room) return none;
+
+  if (!room.started || room.finished || room.eliminated.includes(playerId)) {
+    return { lobby, room, eliminated: false, finished: false, remaining: alive(room) };
+  }
+
+  const updated = { ...room, eliminated: [...room.eliminated, playerId] };
+  const remaining = alive(updated);
+  const finished = remaining.length <= 1;
+
+  const room2 = finished
+    ? { ...updated, finished: true, winner: remaining[0] ?? null }
+    : updated;
+
+  return { lobby: put(lobby, room2), room: room2, eliminated: true, finished, remaining };
+}
+
+/**
+ * Retire un joueur du salon. Un salon vide disparait.
  *
  * @returns {{ lobby: Lobby, room: Room | null, remaining: string[] }}
  */
@@ -74,36 +139,27 @@ export function leave(lobby, playerId) {
   const players = room.players.filter((id) => id !== playerId);
   const rooms = { ...lobby.rooms };
 
-  if (players.length === 0) delete rooms[room.code];
-  else rooms[room.code] = { ...room, players };
+  if (players.length === 0) {
+    delete rooms[room.code];
+    return { lobby: { ...lobby, rooms }, room, remaining: [] };
+  }
 
-  return { lobby: { ...lobby, rooms }, room, remaining: players };
-}
-
-/**
- * Marque la partie comme terminee : le premier joueur a perdre y met fin pour
- * tout le monde.
- *
- * `already` distingue le premier signalement des suivants — les deux joueurs
- * peuvent perdre a quelques millisecondes d'intervalle, et seul le premier
- * doit designer le perdant.
- *
- * @returns {{ lobby: Lobby, room: Room | null, already: boolean }}
- */
-export function finish(lobby, playerId) {
-  const room = roomOf(lobby, playerId);
-  if (!room) return { lobby, room: null, already: false };
-  if (room.finished) return { lobby, room, already: true };
-
-  const finished = { ...room, finished: true };
-  return {
-    lobby: { ...lobby, rooms: { ...lobby.rooms, [room.code]: finished } },
-    room: finished,
-    already: false,
+  const updated = {
+    ...room,
+    players,
+    eliminated: room.eliminated.filter((id) => id !== playerId),
   };
+  rooms[room.code] = updated;
+
+  return { lobby: { ...lobby, rooms }, room: updated, remaining: players };
 }
 
 /** Etat a envoyer a ceux qui patientent. */
 export function waitingStatus(lobby, room) {
-  return { room: room.code, players: room.players.length, capacity: lobby.capacity };
+  return {
+    room: room.code,
+    players: room.players.length,
+    min: lobby.min,
+    max: lobby.max,
+  };
 }

@@ -113,7 +113,9 @@ npm run server     # serveur de jeu sur le port 1985
 npm start          # dans un autre terminal, la page sur le port 1984
 ```
 
-Chaque joueur ouvre la page et choisit « Multijoueur ». Le premier patiente, la partie démarre à l'arrivée du second.
+Chaque joueur ouvre la page et choisit « Multijoueur ». Le salon accueille de **2 à 6 joueurs**.
+
+Dès que deux joueurs sont présents, un bouton « Lancer la partie » apparaît : les présents décident eux-mêmes du départ. Attendre le salon plein rendrait une partie à trois impossible. Le départ est automatique si le salon atteint son maximum.
 
 ### Ce qui circule sur le réseau
 
@@ -121,12 +123,14 @@ Chaque joueur ouvre la page et choisit « Multijoueur ». Le premier patiente, l
 
 ```
 client  -> serveur : { type: 'join', room }
+client  -> serveur : { type: 'begin' }
 client  -> serveur : { type: 'action', action }
 client  -> serveur : { type: 'over' }
-serveur -> client  : { type: 'waiting', players, capacity }
+serveur -> client  : { type: 'waiting', players, min, max }
 serveur -> client  : { type: 'start', seed, playerId, players }
 serveur -> client  : { type: 'action', playerId, action }
-serveur -> client  : { type: 'finished', loser }
+serveur -> client  : { type: 'eliminated', playerId, remaining }
+serveur -> client  : { type: 'finished', winner }
 serveur -> client  : { type: 'left', playerId }
 ```
 
@@ -136,16 +140,18 @@ Une action n'est **pas** appliquée au moment de la frappe : elle part au serveu
 
 Les actions de l'adversaire arrivent par le même canal que les siennes et sont distinguées par `playerId`.
 
-### Fin de partie
+### Éliminations
 
-La défaite du premier joueur met fin à la partie des deux. Celui qui a perdu le signale au serveur, qui désigne le perdant et l'annonce à tous : « Perdu » d'un côté, « Gagné ! » de l'autre. Seul le premier signalement compte — les deux joueurs peuvent perdre à quelques millisecondes d'intervalle.
+Un joueur qui perd est **éliminé**, et la partie continue entre les autres : son plateau se fige et affiche « Éliminé — la partie continue ». **Le dernier en jeu l'emporte** — « Gagné ! » pour lui, « Perdu » pour les autres. À deux, cela revient bien à « le premier qui perd a perdu ».
 
-Le plateau se fige alors des deux côtés, et le seul choix offert est le retour au menu : relancer seul une partie en réseau n'aurait pas de sens, l'adversaire ne suivrait pas.
+Une déconnexion vaut élimination : quitter en cours de partie ne bloque donc jamais les autres, et peut même couronner le dernier resté.
+
+Le panneau affiche le nombre de joueurs encore en jeu. Une fois la partie terminée, le seul choix offert est le retour au menu : relancer seul une partie en réseau n'aurait pas de sens, les autres ne suivraient pas.
 
 ### Ce qui reste à faire
 
-- **Afficher le plateau de l'adversaire.** Ses actions sont déjà reçues ; reste à en dériver son plateau. La difficulté n'est pas les actions mais la gravité, qui avance sur *son* horloge : il faudra dater les actions pour rejouer sa partie fidèlement.
-- **Les lignes envoyées à l'adversaire**, qui font l'intérêt du jeu à deux.
+- **Afficher les plateaux des autres joueurs.** Leurs actions sont déjà reçues ; reste à en dériver leurs plateaux. La difficulté n'est pas les actions mais la gravité, qui avance sur *leur* horloge : il faudra dater les actions pour rejouer leurs parties fidèlement.
+- **Les lignes envoyées aux adversaires**, qui font l'intérêt du jeu à plusieurs.
 - **Choisir son salon** : le code de salon existe dans le protocole, l'interface n'en propose pas encore.
 - **Reconnexion** : aujourd'hui, un joueur qui part met fin à la partie.
 - **La pause est locale** : elle arrête son propre plateau sans arrêter celui de l'adversaire. À deux, c'est un avantage indu — il faudra soit la mettre en commun, soit l'interdire en réseau.

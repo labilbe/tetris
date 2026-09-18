@@ -37,6 +37,9 @@ export function createLocalTransport(seed = randomSeed()) {
     reportGameOver() {
       // En solo, personne d'autre n'a besoin de le savoir.
     },
+    begin() {
+      // En solo, la partie commence sans attendre personne.
+    },
     onAction(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -91,15 +94,29 @@ export function createWebSocketTransport(url, { room = DEFAULT_ROOM } = {}) {
               resolve({ seed: message.seed, playerId });
               break;
             case SERVER.WAITING:
-              notifyStatus({ kind: 'waiting', room: message.room, players: message.players, capacity: message.capacity });
+              notifyStatus({
+                kind: 'waiting',
+                room: message.room,
+                players: message.players,
+                min: message.min,
+                max: message.max,
+              });
               break;
             case SERVER.ACTION:
               for (const listener of actionListeners) {
                 listener(message.action, { playerId: message.playerId, self: message.playerId === playerId });
               }
               break;
+            case SERVER.ELIMINATED:
+              notifyStatus({
+                kind: 'eliminated',
+                playerId: message.playerId,
+                self: message.playerId === playerId,
+                remaining: message.remaining,
+              });
+              break;
             case SERVER.FINISHED:
-              notifyStatus({ kind: 'finished', loser: message.loser, self: message.loser === playerId });
+              notifyStatus({ kind: 'finished', winner: message.winner, self: message.winner === playerId });
               break;
             case SERVER.LEFT:
               notifyStatus({ kind: 'left', playerId: message.playerId });
@@ -133,10 +150,17 @@ export function createWebSocketTransport(url, { room = DEFAULT_ROOM } = {}) {
       }
     },
 
-    /** Signale sa propre defaite : elle met fin a la partie pour tout le monde. */
+    /** Signale sa propre defaite : elle vaut elimination. */
     reportGameOver() {
       if (socket && socket.readyState === WebSocket.OPEN) {
         socket.send(encode({ type: CLIENT.OVER }));
+      }
+    },
+
+    /** Demande a lancer la partie sans attendre que le salon soit plein. */
+    begin() {
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(encode({ type: CLIENT.BEGIN }));
       }
     },
 
