@@ -18,7 +18,7 @@ const OUTCOME_TEXT = {
 /**
  * @param {Record<string, HTMLElement>} elements
  */
-export function createHud({ score, lines, level, toggle, overlay, overlayText, resume, restart, toMenu }) {
+export function createHud({ score, lines, level, toggle, overlay, overlayText, resume, toMenu }) {
   let shown = null; // evite de reecrire le DOM a chaque frame
 
   return {
@@ -38,16 +38,15 @@ export function createHud({ score, lines, level, toggle, overlay, overlayText, r
       toggle.textContent = state.status === STATUS.PAUSED ? 'Reprendre' : 'Pause';
       toggle.disabled = state.status === STATUS.OVER || outcome !== null;
 
-      // L'overlay recouvre le panneau : sans ces boutons, une partie en pause
+      const text = OUTCOME_TEXT[outcome] ?? OVERLAY_TEXT[state.status];
+
+      // L'overlay recouvre le panneau : sans ce bouton, une partie en pause
       // n'offrirait plus aucun moyen de reprendre a la souris.
       resume.hidden = outcome !== null || state.status !== STATUS.PAUSED;
-      // Relancer seul une partie en reseau n'aurait pas de sens : l'adversaire
-      // ne suivrait pas. On ne propose alors que le retour au menu.
-      restart.hidden = outcome !== null;
-      toMenu.hidden = outcome === null;
-      restart.textContent = state.status === STATUS.OVER ? 'Rejouer' : 'Recommencer';
+      // Le retour au menu est le seul autre choix : c'est la qu'on rechoisit le
+      // mode, et relancer seul une partie en reseau n'aurait pas de sens.
+      toMenu.hidden = !text;
 
-      const text = OUTCOME_TEXT[outcome] ?? OVERLAY_TEXT[state.status];
       overlayText.textContent = text ?? '';
       overlay.hidden = !text;
     },

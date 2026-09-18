@@ -57,7 +57,7 @@ Ce menu joue un second rôle : le clic qui lance la partie est aussi le geste qu
 | G | Afficher / masquer la projection d'atterrissage (affichée par défaut) |
 | M | Couper / remettre la musique |
 
-En pause, l'écran propose « Reprendre » et « Recommencer » ; en fin de partie, seulement « Rejouer ».
+L'écran de pause propose « Reprendre » et « Retour au menu ». En fin de partie, seul le retour au menu subsiste — c'est là qu'on rechoisit le mode et qu'on relance une partie.
 
 ## Règles
 

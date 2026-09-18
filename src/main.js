@@ -5,7 +5,6 @@
 
 import { createMusic } from './audio/music.js';
 import { STATUS } from './engine/constants.js';
-import { randomSeed } from './engine/rng.js';
 import { createState, reduce, tick } from './engine/state.js';
 import { createKeyboardInput } from './input/keyboard.js';
 import { createLocalTransport, createWebSocketTransport } from './net/transport.js';
@@ -26,7 +25,6 @@ const hud = createHud({
   overlay: document.getElementById('overlay'),
   overlayText: document.getElementById('overlay-text'),
   resume: document.getElementById('resume'),
-  restart: document.getElementById('restart'),
   toMenu: document.getElementById('to-menu'),
 });
 
@@ -176,6 +174,10 @@ function showMenu(message = '') {
     transport.close();
     transport = null;
   }
+  // Le menu n'est pas une partie en cours : la musique s'arrete avec elle.
+  // render() ne le fera pas, faute d'etat a dessiner une fois celui-ci efface.
+  music.sync({ status: STATUS.OVER });
+
   state = undefined;
   outcome = null;
   overReported = false;
@@ -257,7 +259,7 @@ document.addEventListener('visibilitychange', () => {
 });
 
 document.getElementById('toggle').addEventListener('click', () => dispatch({ type: 'togglePause' }));
-document.getElementById('restart').addEventListener('click', () => dispatch({ type: 'reset', seed: randomSeed() }));
+document.getElementById('to-menu').addEventListener('click', () => showMenu());
 document.getElementById('resume').addEventListener('click', () => dispatch({ type: 'resume' }));
 
 ghostCheckbox.addEventListener('change', () => setGhostVisible(ghostCheckbox.checked));
@@ -277,7 +279,6 @@ document.getElementById('play-solo').addEventListener('click', () => startGame('
 document.getElementById('play-multi').addEventListener('click', () => startGame('multi'));
 document.getElementById('waiting-cancel').addEventListener('click', () => showMenu());
 document.getElementById('waiting-begin').addEventListener('click', () => transport?.begin());
-document.getElementById('to-menu').addEventListener('click', () => showMenu());
 
 window.addEventListener('resize', fitToViewport);
 fitToViewport();
