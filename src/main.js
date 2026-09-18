@@ -126,9 +126,17 @@ function loop(time) {
   requestAnimationFrame(loop);
 }
 
-/** Adresse du serveur de jeu, sur la machine qui sert la page. */
+/**
+ * Adresse du serveur de jeu, sur la machine qui sert la page.
+ *
+ * Le protocole suit celui de la page : un navigateur refuse une connexion ws://
+ * depuis une page https, la tenir pour du contenu mixte. Sur un hebergement
+ * statique (GitHub Pages) il n'y a de toute facon aucun serveur en face, et le
+ * menu affiche alors l'echec.
+ */
 function serverUrl() {
-  return `ws://${location.hostname}:1985`;
+  const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
+  return `${scheme}://${location.hostname}:1985`;
 }
 
 /** Messages du serveur qui concernent l'attente et la connexion, pas le jeu. */

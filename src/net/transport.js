@@ -131,7 +131,10 @@ export function createWebSocketTransport(url, { room = DEFAULT_ROOM } = {}) {
         });
 
         socket.addEventListener('error', () => {
-          const error = new Error(`Connexion impossible au serveur (${url})`);
+          const error = new Error(
+            `Aucun serveur de jeu joignable sur ${url}. Le multijoueur demande `
+            + 'un serveur lancé avec « npm run server », sur la machine qui sert la page.',
+          );
           notifyStatus({ kind: 'error', message: error.message });
           reject(error);
         });
