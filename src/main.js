@@ -149,10 +149,13 @@ function onNetworkStatus(status) {
   switch (status.kind) {
     case 'waiting': {
       const joueurs = `${status.players} joueur${status.players > 1 ? 's' : ''}`;
-      waitingText.textContent = `Salon : ${joueurs} sur ${status.max}`;
-      // Attendre le salon plein rendrait toute partie a trois impossible :
-      // les presents lancent eux-memes, des qu'ils sont assez nombreux.
-      waitingBegin.hidden = status.players < status.min;
+      const manque = status.min - status.players;
+      waitingText.textContent = manque > 0
+        ? `Salon : ${joueurs}. Il en faut ${status.min} pour commencer.`
+        : `Salon : ${joueurs}. À vous de lancer quand vous voulez.`;
+      // Le salon n'a pas de maximum : ce sont les presents qui decident du
+      // depart, des qu'ils sont assez nombreux.
+      waitingBegin.hidden = manque > 0;
       break;
     }
     case 'start':

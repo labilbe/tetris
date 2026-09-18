@@ -25,7 +25,7 @@ describe('arrivee dans un salon', () => {
     assert.equal(room.started, false);
     assert.deepEqual(room.players, ['a']);
     assert.equal(room.seed, SEED);
-    assert.deepEqual(waitingStatus(lobby, room), { room: 'test', players: 1, min: 2, max: 6 });
+    assert.deepEqual(waitingStatus(lobby, room), { room: 'test', players: 1, min: 2 });
   });
 
   it('accueille plus de deux joueurs', () => {
@@ -43,24 +43,17 @@ describe('arrivee dans un salon', () => {
     assert.equal(second.room.seed, SEED);
   });
 
-  it('signale le salon plein au dernier arrivant', () => {
-    let lobby = createLobby({ max: 3 });
-    lobby = join(lobby, 'test', 'a', SEED).lobby;
-    lobby = join(lobby, 'test', 'b', SEED).lobby;
-    const dernier = join(lobby, 'test', 'c', SEED);
+  it('n impose aucun maximum', () => {
+    let lobby = createLobby();
+    const joueurs = Array.from({ length: 12 }, (_, i) => `j${i}`);
+    for (const id of joueurs) {
+      const entree = join(lobby, 'test', id, SEED);
+      assert.equal(entree.joined, true, `${id} doit pouvoir entrer`);
+      lobby = entree.lobby;
+    }
 
-    assert.equal(dernier.joined, true);
-    assert.equal(dernier.full, true);
-  });
-
-  it('refuse un joueur de trop', () => {
-    let lobby = createLobby({ max: 2 });
-    lobby = join(lobby, 'test', 'a', SEED).lobby;
-    lobby = join(lobby, 'test', 'b', SEED).lobby;
-
-    const refuse = join(lobby, 'test', 'c', SEED);
-    assert.equal(refuse.joined, false);
-    assert.equal(refuse.full, true);
+    assert.equal(lobby.rooms.test.players.length, 12);
+    assert.equal(lobby.rooms.test.started, false, 'aucun depart automatique');
   });
 
   it('refuse un arrivant apres le debut', () => {
@@ -103,9 +96,9 @@ describe('lancement', () => {
     assert.equal(lance.room.started, false);
   });
 
-  it('lance des le minimum atteint, sans attendre le salon plein', () => {
-    // C'est ce qui rend possible une partie a trois quand le maximum est six.
-    let lobby = createLobby({ max: 6 });
+  it('lance des le minimum atteint, sur demande', () => {
+    // Rien ne part tout seul : ce sont les presents qui decident.
+    let lobby = createLobby();
     lobby = join(lobby, 'test', 'a', SEED).lobby;
     lobby = join(lobby, 'test', 'b', SEED).lobby;
     lobby = join(lobby, 'test', 'c', SEED).lobby;

@@ -7,7 +7,7 @@
  * server/index.js se charge du reseau et n'a plus de logique a lui.
  */
 
-import { MAX_PLAYERS, MIN_PLAYERS } from '../src/net/protocol.js';
+import { MIN_PLAYERS } from '../src/net/protocol.js';
 
 /**
  * @typedef {{
@@ -19,12 +19,12 @@ import { MAX_PLAYERS, MIN_PLAYERS } from '../src/net/protocol.js';
  *   finished: boolean,
  *   winner: string | null,
  * }} Room
- * @typedef {{ min: number, max: number, rooms: Record<string, Room> }} Lobby
+ * @typedef {{ min: number, rooms: Record<string, Room> }} Lobby
  */
 
 /** @returns {Lobby} */
-export function createLobby({ min = MIN_PLAYERS, max = MAX_PLAYERS } = {}) {
-  return { min, max, rooms: {} };
+export function createLobby({ min = MIN_PLAYERS } = {}) {
+  return { min, rooms: {} };
 }
 
 /** Salon d'un joueur, ou null s'il n'en a pas. */
@@ -47,19 +47,19 @@ function put(lobby, room) {
  * La graine est fixee a la creation du salon et ne change plus : c'est elle qui
  * garantit que tous les joueurs verront la meme suite de pieces.
  *
- * @returns {{ lobby: Lobby, room: Room, joined: boolean, full: boolean }}
+ * @returns {{ lobby: Lobby, room: Room, joined: boolean }}
  */
 export function join(lobby, code, playerId, seed) {
   const existing = lobby.rooms[code];
 
   if (existing && existing.players.includes(playerId)) {
-    return { lobby, room: existing, joined: false, full: false };
+    return { lobby, room: existing, joined: false };
   }
 
-  // Un salon plein ou deja lance n'accepte personne : sinon l'arrivant
-  // manquerait le debut et jouerait une autre partie que les autres.
-  if (existing && (existing.started || existing.players.length >= lobby.max)) {
-    return { lobby, room: existing, joined: false, full: true };
+  // Un salon deja lance n'accepte personne : l'arrivant manquerait le debut et
+  // jouerait une autre partie que les autres. Il n'y a pas d'autre limite.
+  if (existing && existing.started) {
+    return { lobby, room: existing, joined: false };
   }
 
   const base = existing ?? {
@@ -73,12 +73,7 @@ export function join(lobby, code, playerId, seed) {
   };
 
   const room = { ...base, players: [...base.players, playerId] };
-  return {
-    lobby: put(lobby, room),
-    room,
-    joined: true,
-    full: room.players.length >= lobby.max,
-  };
+  return { lobby: put(lobby, room), room, joined: true };
 }
 
 /**
@@ -160,6 +155,5 @@ export function waitingStatus(lobby, room) {
     room: room.code,
     players: room.players.length,
     min: lobby.min,
-    max: lobby.max,
   };
 }

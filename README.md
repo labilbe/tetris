@@ -125,9 +125,9 @@ npm run server     # serveur de jeu sur le port 1985
 npm start          # dans un autre terminal, la page sur le port 1984
 ```
 
-Chaque joueur ouvre la page et choisit « Multijoueur ». Le salon accueille de **2 à 6 joueurs**.
+Chaque joueur ouvre la page et choisit « Multijoueur ». Le salon accueille **autant de joueurs que voulu** ; il en faut simplement deux pour jouer.
 
-Dès que deux joueurs sont présents, un bouton « Lancer la partie » apparaît : les présents décident eux-mêmes du départ. Attendre le salon plein rendrait une partie à trois impossible. Le départ est automatique si le salon atteint son maximum.
+Dès le second joueur, un bouton « Lancer la partie » apparaît. **Rien ne démarre tout seul** : ce sont les présents qui décident du moment, sans quoi un arrivant de plus lancerait la partie à leur place. Une fois lancée, le salon n'accepte plus personne — un retardataire manquerait le début et jouerait une autre partie.
 
 ### Ce qui circule sur le réseau
 
@@ -138,7 +138,7 @@ client  -> serveur : { type: 'join', room }
 client  -> serveur : { type: 'begin' }
 client  -> serveur : { type: 'action', action }
 client  -> serveur : { type: 'over' }
-serveur -> client  : { type: 'waiting', players, min, max }
+serveur -> client  : { type: 'waiting', players, min }
 serveur -> client  : { type: 'start', seed, playerId, players }
 serveur -> client  : { type: 'action', playerId, action }
 serveur -> client  : { type: 'eliminated', playerId, remaining }

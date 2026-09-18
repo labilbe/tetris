@@ -70,16 +70,16 @@ function handleJoin(playerId, message) {
   if (!result.joined) {
     send(playerId, {
       type: SERVER.ERROR,
-      message: 'Ce salon est complet ou la partie a deja commence.',
+      message: 'La partie a deja commence dans ce salon.',
     });
     return;
   }
 
-  console.log(`[salon ${code}] ${result.room.players.length}/${lobby.max} joueur(s)`);
+  console.log(`[salon ${code}] ${result.room.players.length} joueur(s)`);
 
-  // Salon plein : inutile de faire attendre davantage.
-  if (result.full) startRoom(code);
-  else announceWaiting(result.room);
+  // Aucun depart automatique : la partie ne se lance que sur demande d'un
+  // joueur, sans quoi un arrivant de plus la declencherait a leur place.
+  announceWaiting(result.room);
 }
 
 function handleBegin(playerId) {
@@ -172,4 +172,4 @@ server.on('connection', (socket) => {
   socket.on('error', () => handleDisconnect(playerId));
 });
 
-console.log(`Serveur de jeu en ecoute sur le port ${PORT} (${lobby.min} a ${lobby.max} joueurs)`);
+console.log(`Serveur de jeu en ecoute sur le port ${PORT} (${lobby.min} joueurs minimum, sans maximum)`);

@@ -122,7 +122,6 @@ export function createWebSocketTransport(url, { room = DEFAULT_ROOM } = {}) {
                 room: message.room,
                 players: message.players,
                 min: message.min,
-                max: message.max,
               });
               break;
             case SERVER.ACTION:

@@ -18,7 +18,7 @@ export const CLIENT = {
 
 /** Messages du serveur vers le client. */
 export const SERVER = {
-  WAITING: 'waiting', // { type, room, players, min, max }
+  WAITING: 'waiting', // { type, room, players, min }
   START: 'start', // { type, room, seed, playerId, players }
   ACTION: 'action', // { type, playerId, action }
   ELIMINATED: 'eliminated', // { type, playerId, remaining }
@@ -27,9 +27,11 @@ export const SERVER = {
   ERROR: 'error', // { type, message }
 };
 
-/** Il faut au moins deux joueurs pour une partie, et le salon en accepte MAX. */
+/**
+ * Il faut au moins deux joueurs pour une partie. Il n'y a pas de maximum : le
+ * salon accueille qui veut, et ce sont les presents qui decident du depart.
+ */
 export const MIN_PLAYERS = 2;
-export const MAX_PLAYERS = 6;
 
 export const DEFAULT_ROOM = 'partie';
 
