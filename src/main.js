@@ -126,6 +126,19 @@ function loop(time) {
  * statique (GitHub Pages) il n'y a de toute facon aucun serveur en face, et le
  * menu affiche alors l'echec.
  */
+/**
+ * Le multijoueur suppose un serveur sur la machine qui sert la page. Sur un
+ * hebergement statique (GitHub Pages) il n'y en a aucun, et une page https ne
+ * peut de toute facon pas ouvrir une connexion vers un port arbitraire. Autant
+ * le dire tout de suite plutot que de laisser le joueur attendre une connexion
+ * qui n'aboutira pas.
+ */
+function multiplayerUnavailable() {
+  return location.protocol === 'https:'
+    ? 'Le multijoueur demande un serveur : il n’est pas disponible sur la version en ligne.'
+    : '';
+}
+
 function serverUrl() {
   const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
   return `${scheme}://${location.hostname}:1985`;
