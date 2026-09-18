@@ -4,6 +4,7 @@
  */
 
 import { createMusic } from './audio/music.js';
+import { STATUS } from './engine/constants.js';
 import { randomSeed } from './engine/rng.js';
 import { createState, reduce, tick } from './engine/state.js';
 import { createKeyboardInput } from './input/keyboard.js';
@@ -26,6 +27,7 @@ const hud = createHud({
   overlayText: document.getElementById('overlay-text'),
   resume: document.getElementById('resume'),
   restart: document.getElementById('restart'),
+  toMenu: document.getElementById('to-menu'),
 });
 
 const music = createMusic();
@@ -82,18 +84,30 @@ let state;
 let transport = null;
 let lastTime = null;
 let looping = false;
+/** Resultat d'une partie en reseau : 'won', 'lost', ou null tant qu'elle dure. */
+let outcome = null;
+let overReported = false;
 
 /** Envoie une action : en reseau elle repassera par le serveur avant d'etre appliquee. */
 function dispatch(action) {
   if (!transport) return; // encore au menu : il n'y a pas de partie a piloter
+  if (outcome) return; // la partie en reseau est jouee, le verdict est tombe
   transport.send(action);
 }
 
 function render() {
   if (!state) return; // avant le demarrage du transport, il n'y a rien a dessiner
   renderer.draw(state);
-  hud.update(state);
-  music.sync(state);
+  hud.update(state, outcome);
+  // Le verdict arrete la musique comme le ferait une fin de partie.
+  music.sync(outcome ? { ...state, status: STATUS.OVER } : state);
+
+  // Sa propre defaite met fin a la partie des deux joueurs : on la signale une
+  // seule fois, le serveur designant le perdant au premier signalement recu.
+  if (state.status === STATUS.OVER && !overReported && transport) {
+    overReported = true;
+    transport.reportGameOver();
+  }
 }
 
 function loop(time) {
@@ -101,9 +115,9 @@ function loop(time) {
   const delta = lastTime === null ? 0 : time - lastTime;
   lastTime = time;
 
-  // Pas de partie en cours (menu, attente d'un adversaire) : le temps ne doit
-  // pas avancer, sinon les pieces tomberaient derriere l'ecran d'accueil.
-  if (state && transport) {
+  // Pas de partie en cours (menu, attente, verdict tombe) : le temps ne doit
+  // pas avancer, sinon les pieces tomberaient derriere l'ecran affiche.
+  if (state && transport && !outcome) {
     state = tick(state, delta);
     render();
   }
@@ -122,9 +136,15 @@ function onNetworkStatus(status) {
     case 'waiting':
       waitingText.textContent = `En attente d'un adversaire… (${status.players}/${status.capacity})`;
       break;
+    case 'finished':
+      // Le premier joueur a perdre met fin a la partie des deux.
+      outcome = status.self ? 'lost' : 'won';
+      render();
+      break;
     case 'left':
-      // La partie perd son sens des que l'adversaire n'est plus la.
-      showMenu("L'adversaire a quitté la partie.");
+      // Une fois le verdict tombe, le depart de l'adversaire est normal : il
+      // ne doit pas effacer le resultat affiche.
+      if (!outcome) showMenu("L'adversaire a quitté la partie.");
       break;
     case 'closed':
       if (state) showMenu('La connexion au serveur a été perdue.');
@@ -140,6 +160,10 @@ function showMenu(message = '') {
     transport = null;
   }
   state = undefined;
+  outcome = null;
+  overReported = false;
+  // Sans cela, « Perdu » resterait affiche sous le menu.
+  document.getElementById('overlay').hidden = true;
   waiting.hidden = true;
   menu.hidden = false;
   menuError.textContent = message;
@@ -160,6 +184,8 @@ async function startGame(mode) {
 
   menu.hidden = true;
   menuError.hidden = true;
+  outcome = null;
+  overReported = false;
 
   // Le mode choisit le transport, et rien d'autre : le reste du jeu ignore
   // s'il joue en solo ou en reseau.
@@ -227,6 +253,7 @@ createKeyboardInput({
 document.getElementById('play-solo').addEventListener('click', () => startGame('solo'));
 document.getElementById('play-multi').addEventListener('click', () => startGame('multi'));
 document.getElementById('waiting-cancel').addEventListener('click', () => showMenu());
+document.getElementById('to-menu').addEventListener('click', () => showMenu());
 
 window.addEventListener('resize', fitToViewport);
 fitToViewport();

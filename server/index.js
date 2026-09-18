@@ -15,7 +15,7 @@ import { WebSocketServer } from 'ws';
 
 import { randomSeed } from '../src/engine/rng.js';
 import { CLIENT, DEFAULT_ROOM, SERVER, encode, decode } from '../src/net/protocol.js';
-import { createLobby, join, leave, roomOf, waitingStatus } from './rooms.js';
+import { createLobby, finish, join, leave, roomOf, waitingStatus } from './rooms.js';
 
 const PORT = Number(process.env.PORT ?? 1985);
 
@@ -78,6 +78,18 @@ function handleAction(playerId, message) {
   sendToRoom(room, { type: SERVER.ACTION, playerId, action: message.action });
 }
 
+function handleOver(playerId) {
+  const result = finish(lobby, playerId);
+  lobby = result.lobby;
+
+  // Deja termine : c'est l'autre joueur qui a perdu en premier, le resultat
+  // est fixe.
+  if (!result.room || result.already) return;
+
+  sendToRoom(result.room, { type: SERVER.FINISHED, loser: playerId });
+  console.log(`[salon ${result.room.code}] partie terminee`);
+}
+
 function handleDisconnect(playerId) {
   const result = leave(lobby, playerId);
   lobby = result.lobby;
@@ -103,6 +115,7 @@ server.on('connection', (socket) => {
 
     if (message.type === CLIENT.JOIN) handleJoin(playerId, message);
     else if (message.type === CLIENT.ACTION) handleAction(playerId, message);
+    else if (message.type === CLIENT.OVER) handleOver(playerId);
   });
 
   socket.on('close', () => handleDisconnect(playerId));

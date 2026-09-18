@@ -34,6 +34,9 @@ export function createLocalTransport(seed = randomSeed()) {
     send(action) {
       for (const listener of listeners) listener(action, { playerId: LOCAL_PLAYER, self: true });
     },
+    reportGameOver() {
+      // En solo, personne d'autre n'a besoin de le savoir.
+    },
     onAction(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -95,6 +98,9 @@ export function createWebSocketTransport(url, { room = DEFAULT_ROOM } = {}) {
                 listener(message.action, { playerId: message.playerId, self: message.playerId === playerId });
               }
               break;
+            case SERVER.FINISHED:
+              notifyStatus({ kind: 'finished', loser: message.loser, self: message.loser === playerId });
+              break;
             case SERVER.LEFT:
               notifyStatus({ kind: 'left', playerId: message.playerId });
               break;
@@ -124,6 +130,13 @@ export function createWebSocketTransport(url, { room = DEFAULT_ROOM } = {}) {
     send(action) {
       if (socket && socket.readyState === WebSocket.OPEN) {
         socket.send(encode({ type: CLIENT.ACTION, action }));
+      }
+    },
+
+    /** Signale sa propre defaite : elle met fin a la partie pour tout le monde. */
+    reportGameOver() {
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(encode({ type: CLIENT.OVER }));
       }
     },
 

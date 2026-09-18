@@ -122,9 +122,11 @@ Chaque joueur ouvre la page et choisit « Multijoueur ». Le premier patiente, l
 ```
 client  -> serveur : { type: 'join', room }
 client  -> serveur : { type: 'action', action }
+client  -> serveur : { type: 'over' }
 serveur -> client  : { type: 'waiting', players, capacity }
 serveur -> client  : { type: 'start', seed, playerId, players }
 serveur -> client  : { type: 'action', playerId, action }
+serveur -> client  : { type: 'finished', loser }
 serveur -> client  : { type: 'left', playerId }
 ```
 
@@ -134,12 +136,19 @@ Une action n'est **pas** appliquée au moment de la frappe : elle part au serveu
 
 Les actions de l'adversaire arrivent par le même canal que les siennes et sont distinguées par `playerId`.
 
+### Fin de partie
+
+La défaite du premier joueur met fin à la partie des deux. Celui qui a perdu le signale au serveur, qui désigne le perdant et l'annonce à tous : « Perdu » d'un côté, « Gagné ! » de l'autre. Seul le premier signalement compte — les deux joueurs peuvent perdre à quelques millisecondes d'intervalle.
+
+Le plateau se fige alors des deux côtés, et le seul choix offert est le retour au menu : relancer seul une partie en réseau n'aurait pas de sens, l'adversaire ne suivrait pas.
+
 ### Ce qui reste à faire
 
 - **Afficher le plateau de l'adversaire.** Ses actions sont déjà reçues ; reste à en dériver son plateau. La difficulté n'est pas les actions mais la gravité, qui avance sur *son* horloge : il faudra dater les actions pour rejouer sa partie fidèlement.
 - **Les lignes envoyées à l'adversaire**, qui font l'intérêt du jeu à deux.
 - **Choisir son salon** : le code de salon existe dans le protocole, l'interface n'en propose pas encore.
 - **Reconnexion** : aujourd'hui, un joueur qui part met fin à la partie.
+- **La pause est locale** : elle arrête son propre plateau sans arrêter celui de l'adversaire. À deux, c'est un avantage indu — il faudra soit la mettre en commun, soit l'interdire en réseau.
 
 ## Musique
 

@@ -9,7 +9,7 @@
 import { CAPACITY } from '../src/net/protocol.js';
 
 /**
- * @typedef {{ code: string, seed: number, players: string[], started: boolean }} Room
+ * @typedef {{ code: string, seed: number, players: string[], started: boolean, finished?: boolean }} Room
  * @typedef {{ capacity: number, rooms: Record<string, Room> }} Lobby
  */
 
@@ -78,6 +78,29 @@ export function leave(lobby, playerId) {
   else rooms[room.code] = { ...room, players };
 
   return { lobby: { ...lobby, rooms }, room, remaining: players };
+}
+
+/**
+ * Marque la partie comme terminee : le premier joueur a perdre y met fin pour
+ * tout le monde.
+ *
+ * `already` distingue le premier signalement des suivants — les deux joueurs
+ * peuvent perdre a quelques millisecondes d'intervalle, et seul le premier
+ * doit designer le perdant.
+ *
+ * @returns {{ lobby: Lobby, room: Room | null, already: boolean }}
+ */
+export function finish(lobby, playerId) {
+  const room = roomOf(lobby, playerId);
+  if (!room) return { lobby, room: null, already: false };
+  if (room.finished) return { lobby, room, already: true };
+
+  const finished = { ...room, finished: true };
+  return {
+    lobby: { ...lobby, rooms: { ...lobby.rooms, [room.code]: finished } },
+    room: finished,
+    already: false,
+  };
 }
 
 /** Etat a envoyer a ceux qui patientent. */

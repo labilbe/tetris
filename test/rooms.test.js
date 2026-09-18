@@ -6,7 +6,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { createLobby, join, leave, roomOf, waitingStatus } from '../server/rooms.js';
+import { createLobby, finish, join, leave, roomOf, waitingStatus } from '../server/rooms.js';
 
 const SEED = 4242;
 
@@ -70,6 +70,45 @@ describe('arrivee dans un salon', () => {
     const lobby = createLobby();
     const avant = JSON.stringify(lobby);
     join(lobby, 'test', 'a', SEED);
+
+    assert.equal(JSON.stringify(lobby), avant);
+  });
+});
+
+describe('fin de partie', () => {
+  function salonLance() {
+    let lobby = createLobby();
+    lobby = join(lobby, 'test', 'a', SEED).lobby;
+    return join(lobby, 'test', 'b', SEED).lobby;
+  }
+
+  it('marque la partie terminee au premier perdant', () => {
+    const fin = finish(salonLance(), 'a');
+
+    assert.equal(fin.already, false);
+    assert.equal(fin.room.finished, true);
+  });
+
+  it('ignore le second signalement', () => {
+    // Les deux joueurs peuvent perdre a quelques millisecondes d'intervalle :
+    // seul le premier doit designer le perdant.
+    const premier = finish(salonLance(), 'a');
+    const second = finish(premier.lobby, 'b');
+
+    assert.equal(second.already, true);
+  });
+
+  it('accepte le signalement d un joueur sans salon', () => {
+    const fin = finish(createLobby(), 'fantome');
+
+    assert.equal(fin.room, null);
+    assert.equal(fin.already, false);
+  });
+
+  it('ne mute pas le lobby recu', () => {
+    const lobby = salonLance();
+    const avant = JSON.stringify(lobby);
+    finish(lobby, 'a');
 
     assert.equal(JSON.stringify(lobby), avant);
   });
