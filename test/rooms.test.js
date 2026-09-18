@@ -213,6 +213,19 @@ describe('depart', () => {
     assert.deepEqual(alive(sortie.room), ['b', 'c']);
   });
 
+  it('laisse le salon intact quand un joueur passe sans rester', () => {
+    // Le salon continue d'attendre, il ne se lance ni ne se vide.
+    let lobby = createLobby();
+    lobby = join(lobby, 'test', 'a', SEED).lobby;
+    lobby = join(lobby, 'test', 'b', SEED).lobby;
+
+    const sortie = leave(lobby, 'b');
+    assert.deepEqual(sortie.remaining, ['a']);
+    assert.equal(sortie.room.started, false);
+    assert.equal(sortie.room.finished, false);
+    assert.deepEqual(waitingStatus(sortie.lobby, sortie.room).players, 1);
+  });
+
   it('accepte le depart d un inconnu', () => {
     const sortie = leave(createLobby(), 'fantome');
 

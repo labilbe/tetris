@@ -144,7 +144,9 @@ Les actions de l'adversaire arrivent par le même canal que les siennes et sont 
 
 Un joueur qui perd est **éliminé**, et la partie continue entre les autres : son plateau se fige et affiche « Éliminé — la partie continue ». **Le dernier en jeu l'emporte** — « Gagné ! » pour lui, « Perdu » pour les autres. À deux, cela revient bien à « le premier qui perd a perdu ».
 
-Une déconnexion vaut élimination : quitter en cours de partie ne bloque donc jamais les autres, et peut même couronner le dernier resté.
+Une déconnexion **en cours de partie** vaut élimination : quitter ne bloque donc jamais les autres, et peut même couronner le dernier resté.
+
+Avant le lancement, en revanche, un joueur qui entre puis ressort du salon n'annule rien : ceux qui patientent voient simplement le compte baisser.
 
 Le panneau affiche le nombre de joueurs encore en jeu. Une fois la partie terminée, le seul choix offert est le retour au menu : relancer seul une partie en réseau n'aurait pas de sens, les autres ne suivraient pas.
 

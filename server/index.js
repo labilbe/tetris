@@ -126,20 +126,28 @@ function handleElimination(playerId) {
 }
 
 function handleDisconnect(playerId) {
-  // Un depart en pleine partie vaut elimination : on l'arbitre avant de retirer
-  // le joueur du salon, sinon il n'y serait plus pour etre elimine.
-  handleElimination(playerId);
+  // L'etat du salon est lu avant le retrait : apres, le joueur n'y est plus.
+  const started = roomOf(lobby, playerId)?.started ?? false;
+
+  // Un depart en pleine partie vaut elimination, arbitree tant que le joueur
+  // fait encore partie du salon.
+  if (started) handleElimination(playerId);
 
   const result = leave(lobby, playerId);
   lobby = result.lobby;
   sockets.delete(playerId);
 
-  if (!result.room) return;
+  if (!result.room || result.remaining.length === 0) return;
 
-  for (const id of result.remaining) send(id, { type: SERVER.LEFT, playerId });
-
-  // Depart avant le debut : ceux qui patientent doivent voir le compte baisser.
-  if (!result.room.started && result.remaining.length > 0) announceWaiting(result.room);
+  if (started) {
+    // Evenement de partie : les survivants continuent, c'est l'elimination qui
+    // decide de la suite, pas ce message.
+    for (const id of result.remaining) send(id, { type: SERVER.LEFT, playerId });
+  } else {
+    // Simple passage dans le salon : ceux qui patientent voient le compte
+    // baisser, et rien de plus. Leur attente n'est pas annulee.
+    announceWaiting(result.room);
+  }
 
   console.log(`[salon ${result.room.code}] depart (${result.remaining.length} restant(s))`);
 }

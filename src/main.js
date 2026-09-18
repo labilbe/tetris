@@ -159,9 +159,9 @@ function onNetworkStatus(status) {
       render();
       break;
     case 'left':
-      // Une fois le verdict tombe, le depart de l'adversaire est normal : il
-      // ne doit pas effacer le resultat affiche.
-      if (!outcome) showMenu("L'adversaire a quitté la partie.");
+      // Rien a faire : un depart en cours de partie vaut elimination, et c'est
+      // le serveur qui en tire les consequences. Renvoyer les autres au menu
+      // arreterait une partie a plusieurs qui doit continuer.
       break;
     case 'closed':
       if (state) showMenu('La connexion au serveur a été perdue.');
