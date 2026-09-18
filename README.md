@@ -176,9 +176,16 @@ Avant le lancement, en revanche, un joueur qui entre puis ressort du salon n'ann
 
 Le panneau affiche le nombre de joueurs encore en jeu. Une fois la partie terminée, le seul choix offert est le retour au menu : relancer seul une partie en réseau n'aurait pas de sens, les autres ne suivraient pas.
 
+### Les plateaux des autres ne sont pas affichés
+
+C'est un choix, pas un manque. Le salon n'ayant aucune limite, afficher un plateau par joueur ne tiendrait ni à l'écran ni en calcul : il faudrait rejouer autant de parties que d'adversaires, en plus de la sienne.
+
+Le panneau se contente donc du **nombre de joueurs encore en jeu**, qui suffit à situer sa progression, et les lignes de handicap disent le reste : on sait qu'un adversaire a réussi un gros coup quand sa pile arrive.
+
+Ce choix écarte au passage la difficulté la plus sérieuse du jeu en réseau — reconstituer le plateau d'un autre joueur supposerait de dater ses actions, sa gravité avançant sur *son* horloge, et non sur la nôtre.
+
 ### Ce qui reste à faire
 
-- **Afficher les plateaux des autres joueurs.** Leurs actions sont déjà reçues ; reste à en dériver leurs plateaux. La difficulté n'est pas les actions mais la gravité, qui avance sur *leur* horloge : il faudra dater les actions pour rejouer leurs parties fidèlement.
 - **Choisir son salon** : le code de salon existe dans le protocole, l'interface n'en propose pas encore.
 - **Reconnexion** : aujourd'hui, un joueur qui part met fin à la partie.
 - **La pause est locale** : elle arrête son propre plateau sans arrêter celui de l'adversaire. À deux, c'est un avantage indu — il faudra soit la mettre en commun, soit l'interdire en réseau.
