@@ -24,14 +24,21 @@ Get-NetIPAddress -AddressFamily IPv4 |
   Select-Object IPAddress, InterfaceAlias
 ```
 
-Si la connexion est refusée depuis une autre machine, c'est le pare-feu Windows : ses règles pour Node.js doivent couvrir le profil du réseau utilisé (Domain, Private ou Public). Pour ouvrir explicitement ce seul port, dans un terminal **administrateur** :
+**Pour jouer ensemble**, lancez aussi le serveur de jeu sur cette même machine :
 
-```powershell
-New-NetFirewallRule -DisplayName "Tetris (port 1984)" -Direction Inbound `
-  -Protocol TCP -LocalPort 1984 -Action Allow -Profile Domain,Private
+```bash
+npm run server     # port 1985
+npm start          # port 1984, dans un autre terminal
 ```
 
-Le jeu étant entièrement local au navigateur, chaque machine joue sa propre partie : la page partagée ne fait pas encore un jeu partagé — c'est l'objet du multijoueur.
+Chacun ouvre `http://<adresse>:1984` et choisit « Multijoueur ». Le jeu se connecte au serveur sur la machine qui lui a servi la page : rien à configurer chez les invités.
+
+Si la connexion est refusée depuis une autre machine, c'est le pare-feu Windows : ses règles pour Node.js doivent couvrir le profil du réseau utilisé (Domain, Private ou Public). Pour ouvrir explicitement ces deux ports, dans un terminal **administrateur** :
+
+```powershell
+New-NetFirewallRule -DisplayName "Tetris" -Direction Inbound `
+  -Protocol TCP -LocalPort 1984,1985 -Action Allow -Profile Domain,Private
+```
 
 ### Sur téléphone
 
