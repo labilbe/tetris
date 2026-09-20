@@ -152,19 +152,23 @@ Une action n'est **pas** appliquée au moment de la frappe : elle part au serveu
 
 Les actions de l'adversaire arrivent par le même canal que les siennes et sont distinguées par `playerId`.
 
-### Lignes de handicap
+### Blocs de handicap
 
-Effacer **au moins deux lignes d'un coup** envoie des lignes grises aux autres joueurs : elles arrivent par le bas, percées d'un trou, et font monter toute leur pile. Une seule ligne n'envoie rien.
+Effacer **au moins deux lignes d'un coup** envoie des blocs gris aux autres joueurs. Ils **tombent du haut** et se posent sur leur pile, colonne par colonne. Une seule ligne n'envoie rien.
 
-| Lignes effacées | Lignes envoyées |
+| Lignes effacées | Blocs envoyés |
 | --- | --- |
-| 2 | 1 |
-| 3 | 2 |
-| 4 | 4 |
+| 2 | 5 |
+| 3 | 10 |
+| 4 | 20 |
 
-**Le handicap est identique chez tous les receveurs.** C'est une contrainte plus forte qu'il n'y paraît : les trous ne peuvent pas être tirés chez chacun, ce qui donnerait des plateaux différents, ni tirés avec le générateur du jeu, dont l'avance est synchronisée avec la suite de pièces. Ils sont donc tirés une fois par l'émetteur et **voyagent dans l'action** — `{ type: 'garbage', holes: [3, 7] }`.
+Le compte est en blocs, pas en lignes : cinq blocs ne valent qu'une demi-ligne de matière, mais répartie de façon bien plus gênante qu'une ligne pleine.
 
-C'est aussi la seule action qui s'applique aux *autres* et non à soi : celui qui efface les lignes ne se pénalise pas. Si la pile qui monte pousse des blocs hors du plateau, c'est la fin de partie.
+**Un bloc tombe, il ne se glisse donc jamais sous un surplomb** : il s'arrête sur la première case occupée de sa colonne. C'est ce qui distingue ce handicap d'une ligne poussée par le bas — au lieu de décaler proprement la pile, il coiffe les puits et crée des creux inaccessibles.
+
+**Le handicap est identique chez tous les receveurs.** C'est une contrainte plus forte qu'il n'y paraît : les colonnes ne peuvent pas être tirées chez chacun, ce qui donnerait des plateaux différents, ni tirées avec le générateur du jeu, dont l'avance est synchronisée avec la suite de pièces. Elles sont donc tirées une fois par l'émetteur et **voyagent dans l'action** — `{ type: 'garbage', columns: [0, 0, 3, 7] }`.
+
+C'est aussi la seule action qui s'applique aux *autres* et non à soi : celui qui efface les lignes ne se pénalise pas. Une colonne qui atteint le plafond termine la partie du receveur ; et si un bloc comble le dernier vide d'une rangée, celle-ci disparaît — sans rien rapporter, puisque ce n'est pas le joueur qui l'a faite.
 
 ### Éliminations
 

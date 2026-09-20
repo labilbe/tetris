@@ -219,31 +219,45 @@ function applyGravity(state) {
  * @param {GameState} state
  * @param {number[]} holes une colonne trouee par ligne ajoutee
  */
-function addGarbage(state, holes) {
-  if (!Array.isArray(holes) || holes.length === 0) return state;
+function addGarbage(state, columns) {
+  if (!Array.isArray(columns) || columns.length === 0) return state;
 
-  let grid = state.grid;
+  const grid = state.grid.map((row) => row.slice());
   let toppedOut = false;
 
-  for (const hole of holes) {
-    // Ce qui occupait la ligne du haut est pousse hors du plateau : la pile a
-    // atteint le plafond.
-    if (grid[0].some((cell) => cell !== null)) toppedOut = true;
+  for (const column of columns) {
+    if (!Number.isInteger(column) || column < 0 || column >= COLS) continue;
 
-    const row = new Array(COLS).fill(GARBAGE_COLOR);
-    if (hole >= 0 && hole < COLS) row[hole] = null;
-    grid = [...grid.slice(1), row];
+    // Le bloc tombe du haut : il s'arrete sur la premiere case occupee de sa
+    // colonne, et ne peut donc pas se glisser sous un surplomb. C'est ce qui
+    // rend ce handicap plus genant qu'une ligne poussee par le bas : il coiffe
+    // les puits au lieu de decaler proprement la pile.
+    let premiereOccupee = 0;
+    while (premiereOccupee < ROWS && grid[premiereOccupee][column] === null) premiereOccupee++;
+
+    const y = premiereOccupee - 1;
+    if (y < 0) {
+      toppedOut = true; // la colonne monte deja jusqu'au plafond
+      continue;
+    }
+
+    grid[y][column] = GARBAGE_COLOR;
   }
 
-  // La piece en cours peut se retrouver dans la pile qui vient de monter : on
-  // la remonte d'autant que necessaire.
+  // Un bloc peut combler le dernier vide d'une rangee. Une rangee pleine ne
+  // doit jamais subsister : elle disparait, mais sans rien rapporter — ce n'est
+  // pas le joueur qui l'a faite.
+  const { grid: nettoyee } = clearLines(grid);
+
+  // La piece en cours peut se retrouver prise dans les blocs qui viennent de
+  // se poser : on la remonte juste ce qu'il faut.
   let current = state.current;
-  while (collides(grid, current) && current.y > -current.cells.length) {
+  while (collides(nettoyee, current) && current.y > -current.cells.length) {
     current = { ...current, y: current.y - 1 };
   }
 
-  const status = toppedOut || collides(grid, current) ? STATUS.OVER : state.status;
-  return { ...state, grid, current, status };
+  const status = toppedOut || collides(nettoyee, current) ? STATUS.OVER : state.status;
+  return { ...state, grid: nettoyee, current, status };
 }
 
 function move(state, dx) {
@@ -314,7 +328,7 @@ export function reduce(state, action) {
     case 'hardDrop':
       return hardDrop(state);
     case 'garbage':
-      return addGarbage(state, action.holes);
+      return addGarbage(state, action.columns);
     default:
       return state;
   }

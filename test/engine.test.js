@@ -158,75 +158,122 @@ describe('deplacements', () => {
   });
 });
 
-describe('lignes de handicap', () => {
-  /** Grille dont la ligne du bas porte une seule case, pour suivre sa montee. */
-  function avecUnRepere(state, colonne = 0) {
+
+describe('blocs de handicap', () => {
+  /** Grille vide, puis les cases demandees remplies : [colonne, ligne]. */
+  function avec(state, cases) {
     const grid = state.grid.map((row) => row.slice());
-    grid[ROWS - 1][colonne] = '#ffffff';
+    for (const [col, row] of cases) grid[row][col] = '#ffffff';
     return { ...state, grid };
   }
 
-  it('ajoute une ligne par trou demande', () => {
-    const state = createState(SEED);
-    const apres = reduce(state, { type: 'garbage', holes: [3, 7] });
+  /** Lignes occupees d'une colonne, du haut vers le bas. */
+  function colonne(state, col) {
+    return state.grid.map((row, y) => (row[col] === null ? null : y)).filter((y) => y !== null);
+  }
 
-    assert.equal(apres.grid[ROWS - 1][7], null, 'le trou de la derniere ligne');
-    assert.equal(apres.grid[ROWS - 2][3], null, 'le trou de l avant-derniere');
-    assert.equal(apres.grid[ROWS - 1][0], GARBAGE_COLOR);
-    assert.equal(apres.grid[ROWS - 2][0], GARBAGE_COLOR);
+  it('pose le bloc au fond d une colonne vide', () => {
+    const apres = reduce(createState(SEED), { type: 'garbage', columns: [4] });
+
+    assert.equal(apres.grid[ROWS - 1][4], GARBAGE_COLOR);
+    assert.deepEqual(colonne(apres, 4), [ROWS - 1]);
   });
 
-  it('fait monter la pile existante', () => {
-    const state = avecUnRepere(createState(SEED), 4);
-    const apres = reduce(state, { type: 'garbage', holes: [0, 0] });
+  it('pose le bloc sur la pile, pas dessous', () => {
+    const state = avec(createState(SEED), [[4, ROWS - 1]]);
+    const apres = reduce(state, { type: 'garbage', columns: [4] });
 
-    assert.equal(apres.grid[ROWS - 3][4], '#ffffff', 'le repere a monte de deux');
+    assert.equal(apres.grid[ROWS - 2][4], GARBAGE_COLOR);
   });
 
-  it('ne perce qu une colonne par ligne', () => {
-    const apres = reduce(createState(SEED), { type: 'garbage', holes: [5] });
-    const vides = apres.grid[ROWS - 1].filter((cell) => cell === null);
+  it('ne se glisse pas sous un surplomb', () => {
+    // Une case en hauteur, rien en dessous : le bloc tombe du haut et s'arrete
+    // dessus. C'est ce qui distingue ce handicap d'une ligne poussee par le bas.
+    const state = avec(createState(SEED), [[4, 10]]);
+    const apres = reduce(state, { type: 'garbage', columns: [4] });
 
-    assert.equal(vides.length, 1);
+    assert.equal(apres.grid[9][4], GARBAGE_COLOR, 'le bloc s arrete au-dessus');
+    assert.equal(apres.grid[ROWS - 1][4], null, 'le fond reste vide');
   });
 
-  it('termine la partie quand la pile sort par le haut', () => {
-    const state = createState(SEED);
-    const grid = state.grid.map((row) => row.slice());
-    grid[0][0] = '#ffffff'; // quelque chose occupe deja la ligne du haut
-    const apres = reduce({ ...state, grid }, { type: 'garbage', holes: [2] });
+  it('empile plusieurs blocs d une meme colonne', () => {
+    const apres = reduce(createState(SEED), { type: 'garbage', columns: [2, 2, 2] });
+
+    assert.deepEqual(colonne(apres, 2), [ROWS - 3, ROWS - 2, ROWS - 1]);
+  });
+
+  it('ne touche pas les colonnes non visees', () => {
+    const apres = reduce(createState(SEED), { type: 'garbage', columns: [0] });
+
+    for (let col = 1; col < COLS; col++) {
+      assert.deepEqual(colonne(apres, col), [], `colonne ${col} intacte`);
+    }
+  });
+
+  it('termine la partie quand une colonne atteint le plafond', () => {
+    const pleine = Array.from({ length: ROWS }, (_, y) => [3, y]);
+    const state = avec(createState(SEED), pleine);
+    const apres = reduce(state, { type: 'garbage', columns: [3] });
 
     assert.equal(apres.status, STATUS.OVER);
   });
 
-  it('remonte la piece en cours si la pile la rattrape', () => {
+  it('remonte la piece en cours si un bloc la rattrape', () => {
     const state = createState(SEED);
-    const descendue = { ...state, current: { ...state.current, y: ROWS - 2 } };
-    const apres = reduce(descendue, { type: 'garbage', holes: [0, 1, 2] });
+    const descendue = { ...state, current: { ...state.current, y: ROWS - 3 } };
+
+    // Une colonne que la piece occupe reellement, empilee assez haut pour la
+    // rattraper. Une seule colonne : de quoi eviter de completer une rangee,
+    // qui disparaitrait aussitot.
+    const piece = descendue.current;
+    let visee = null;
+    piece.cells.forEach((row, y) => row.forEach((value, x) => {
+      if (value && visee === null) visee = piece.x + x;
+    }));
+
+    const apres = reduce(descendue, { type: 'garbage', columns: [visee, visee, visee, visee] });
 
     assert.ok(apres.current.y < descendue.current.y, 'la piece a ete remontee');
     assert.notEqual(apres.status, STATUS.OVER);
   });
 
-  it('ignore un handicap vide', () => {
+  it('ignore un handicap vide ou hors du plateau', () => {
     const state = createState(SEED);
-    assert.deepEqual(reduce(state, { type: 'garbage', holes: [] }), state);
+    assert.deepEqual(reduce(state, { type: 'garbage', columns: [] }), state);
     assert.deepEqual(reduce(state, { type: 'garbage' }), state);
+
+    const horsPlateau = reduce(state, { type: 'garbage', columns: [-1, COLS, 1.5] });
+    assert.deepEqual(horsPlateau.grid, state.grid);
   });
 
   it('ne mute pas l etat recu', () => {
     const state = createState(SEED);
-    const avant = JSON.stringify(state);
-    reduce(state, { type: 'garbage', holes: [1, 2] });
+    const avantJson = JSON.stringify(state);
+    reduce(state, { type: 'garbage', columns: [1, 1, 2] });
 
-    assert.equal(JSON.stringify(state), avant);
+    assert.equal(JSON.stringify(state), avantJson);
   });
 
   it('n envoie rien pour une seule ligne', () => {
-    // C'est la regle demandee : il faut au moins deux lignes pour genner.
+    // La regle demandee : il faut au moins deux lignes pour genner quelqu un.
     assert.equal(GARBAGE_SENT[1] ?? 0, 0);
-    assert.equal(GARBAGE_SENT[2], 1);
-    assert.equal(GARBAGE_SENT[3], 2);
-    assert.equal(GARBAGE_SENT[4], 4);
+    assert.equal(GARBAGE_SENT[2], 5);
+    assert.equal(GARBAGE_SENT[3], 10);
+    assert.equal(GARBAGE_SENT[4], 20);
+  });
+});
+
+describe('handicap qui complete une rangee', () => {
+  it('efface la rangee comblee par un bloc, sans rien rapporter', () => {
+    // Une rangee a laquelle il ne manque qu une case, comblee par le handicap.
+    const state = createState(SEED);
+    const grid = state.grid.map((row) => row.slice());
+    for (let col = 1; col < COLS; col++) grid[ROWS - 1][col] = '#ffffff';
+
+    const apres = reduce({ ...state, grid }, { type: 'garbage', columns: [0] });
+
+    assert.ok(apres.grid[ROWS - 1].every((cell) => cell === null), 'la rangee a disparu');
+    assert.equal(apres.lines, state.lines, 'aucune ligne portee au compteur');
+    assert.equal(apres.score, state.score, 'aucun point : ce n est pas le joueur qui l a faite');
   });
 });

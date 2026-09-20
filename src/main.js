@@ -184,12 +184,12 @@ function onNetworkStatus(status) {
 
 /**
  * Envoie un handicap aux autres joueurs apres un effacement de plusieurs
- * lignes.
+ * lignes : des blocs qui leur tomberont du haut.
  *
- * Les colonnes trouees sont tirees ici, une fois, et voyagent avec l'action :
- * tous les receveurs subissent donc exactement les memes lignes. Les tirer
- * chez chacun donnerait des trous differents, et les tirer avec le generateur
- * du jeu ferait diverger la suite de pieces.
+ * Les colonnes sont tirees ici, une fois, et voyagent avec l'action : tous les
+ * receveurs subissent donc exactement les memes blocs. Les tirer chez chacun
+ * donnerait des plateaux differents, et les tirer avec le generateur du jeu
+ * ferait diverger la suite de pieces.
  *
  * @param {number} cleared lignes effacees d'un coup
  */
@@ -197,8 +197,20 @@ function sendGarbage(cleared) {
   const count = GARBAGE_SENT[cleared] ?? 0;
   if (count === 0) return;
 
-  const holes = Array.from({ length: count }, () => Math.floor(Math.random() * COLS));
-  dispatch({ type: 'garbage', holes });
+  // Une passe = chaque colonne au plus une fois. En enchainant des passes
+  // melangees, les blocs se repartissent au lieu de s'empiler au meme endroit,
+  // tout en restant imprevisibles.
+  const columns = [];
+  while (columns.length < count) {
+    const passe = [...Array(COLS).keys()];
+    for (let i = passe.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [passe[i], passe[j]] = [passe[j], passe[i]];
+    }
+    columns.push(...passe.slice(0, count - columns.length));
+  }
+
+  dispatch({ type: 'garbage', columns });
 }
 
 function showMenu(message = '') {

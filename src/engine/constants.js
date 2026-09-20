@@ -20,13 +20,17 @@ export const TYPES = Object.keys(PIECES);
 export const LINE_POINTS = [0, 100, 300, 500, 800];
 
 /**
- * Lignes de handicap envoyees aux autres joueurs selon le nombre de lignes
+ * Blocs de handicap envoyes aux autres joueurs selon le nombre de lignes
  * effacees d'un coup. Une seule ligne n'envoie rien : il faut en reussir au
  * moins deux pour genner quelqu'un.
+ *
+ * Le compte est en blocs, pas en lignes : ils tombent du haut et se posent sur
+ * la pile, colonne par colonne. Cinq blocs valent donc une demi-ligne de
+ * matiere, mais repartie de facon bien plus genante qu'une ligne pleine.
  */
-export const GARBAGE_SENT = { 2: 1, 3: 2, 4: 4 };
+export const GARBAGE_SENT = { 2: 5, 3: 10, 4: 20 };
 
-/** Les lignes recues sont grises : elles ne viennent d'aucune piece. */
+/** Les blocs recus sont gris : ils ne viennent d'aucune piece. */
 export const GARBAGE_COLOR = '#6b7280';
 
 export const SOFT_DROP_POINTS = 1;
