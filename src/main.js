@@ -4,19 +4,26 @@
  */
 
 import { createMusic } from './audio/music.js';
-import { COLS, GARBAGE_SENT, STATUS } from './engine/constants.js';
+import { STATUS } from './engine/constants.js';
 import { createState, reduce, tick } from './engine/state.js';
 import { createKeyboardInput } from './input/keyboard.js';
 import { createTouchInput } from './input/touch.js';
+import { drawGarbageColumns } from './net/garbage.js';
+import { randomName } from './net/protocol.js';
+import { decodeBoard, encodeBoard } from './net/snapshot.js';
 import { createLocalTransport, createWebSocketTransport } from './net/transport.js';
-import { createRenderer } from './render/canvas.js';
+import { createRenderer, createRivalRenderer } from './render/canvas.js';
 import { createHud } from './render/hud.js';
-import { readPreference, writePreference } from './view/preferences.js';
+import { DANGER, automatique, cadrer, createCamera, viser } from './view/camera.js';
+import { readPreference, readTextPreference, writePreference } from './view/preferences.js';
 
 const renderer = createRenderer({
   board: document.getElementById('board'),
   next: document.getElementById('next'),
 });
+
+const rivalCanvas = document.getElementById('rival');
+const rivalRenderer = createRivalRenderer(rivalCanvas);
 
 const hud = createHud({
   score: document.getElementById('score'),
@@ -41,6 +48,9 @@ const waitingBegin = document.getElementById('waiting-begin');
 const remaining = document.getElementById('remaining');
 const pad = document.getElementById('pad');
 const game = document.querySelector('.game');
+const pseudo = document.getElementById('pseudo');
+const rivalName = document.getElementById('rival-name');
+const rivalAuto = document.getElementById('rival-auto');
 
 // Pavé tactile : sur un écran tactile, et sur un écran étroit où la mise en
 // page s'empile de toute façon.
@@ -56,6 +66,19 @@ function updatePad() {
 
 const GHOST_PREFERENCE = 'tetris.ghost';
 const MUSIC_PREFERENCE = 'tetris.music';
+const PSEUDO_PREFERENCE = 'tetris.pseudo';
+
+/** Port du serveur de jeu : le WebSocket des parties, et le nom de la machine. */
+const GAME_PORT = 1985;
+
+/**
+ * Rythme d'emission de son propre plateau vers les spectateurs.
+ *
+ * Cinq images par seconde : assez pour voir jouer quelqu'un, assez peu pour que
+ * le canal d'affichage ne pese rien a cote des actions. Une image perdue ne se
+ * rattrape pas — la suivante arrive.
+ */
+const BOARD_MS = 200;
 
 function setGhostVisible(visible) {
   renderer.setGhostVisible(visible);
@@ -79,6 +102,61 @@ let looping = false;
 /** Resultat d'une partie en reseau : 'won', 'lost', ou null tant qu'elle dure. */
 let outcome = null;
 let overReported = false;
+
+/**
+ * Les adversaires, tels qu'on les voit.
+ *
+ * Rien ici n'appartient au jeu : des images recues, des pseudos, et le choix de
+ * celui qu'on regarde. Une vignette en retard ou manquante ne change la partie
+ * de personne — c'est ce qui autorise a la traiter aussi legerement.
+ *
+ * @type {Map<string, { id: string, name: string, grid: (string|null)[][] | null, hauteur: number, vivant: boolean }>}
+ */
+const rivaux = new Map();
+let camera = createCamera();
+let moiId = null;
+let estMulti = false;
+let dernierInstantane = 0;
+/** Composition du salon, recue au depart de la partie. */
+let salon = { players: [], names: {} };
+
+/** L'ordre d'arrivee fait l'ordre des plans : la rotation reste previsible. */
+function listeRivaux() {
+  return [...rivaux.values()];
+}
+
+/** Prepare une vignette par adversaire, vide jusqu'au premier instantane. */
+function construireRivaux() {
+  rivaux.clear();
+  camera = createCamera();
+
+  for (const id of salon.players) {
+    if (id === moiId) continue; // on se voit deja en grand
+    rivaux.set(id, { id, name: salon.names[id] ?? 'Joueur', grid: null, hauteur: 0, vivant: true });
+  }
+}
+
+/** Choisit le plan et le dessine. Purement decoratif : jamais dans render(). */
+function dessineMultiplex(maintenant) {
+  camera = cadrer(camera, listeRivaux(), maintenant);
+  const vu = camera.focus ? rivaux.get(camera.focus) : null;
+
+  rivalName.textContent = vu ? vu.name : '—';
+  rivalRenderer.draw(vu?.grid ?? null);
+  rivalCanvas.classList.toggle('danger', Boolean(vu && vu.hauteur >= DANGER));
+  rivalAuto.setAttribute('aria-pressed', String(camera.mode === 'auto'));
+}
+
+/** Commandes de la camera, qu'elles viennent du clavier ou des boutons. */
+function commandeCamera(type) {
+  if (!estMulti) return;
+  const maintenant = performance.now();
+
+  if (type === 'watchAuto') camera = automatique(camera, maintenant);
+  else camera = viser(camera, listeRivaux(), type === 'watchPrev' ? -1 : 1, maintenant);
+
+  dessineMultiplex(maintenant);
+}
 
 /** Envoie une action : en reseau elle repassera par le serveur avant d'etre appliquee. */
 function dispatch(action) {
@@ -112,7 +190,18 @@ function loop(time) {
   if (state && transport && !outcome) {
     state = tick(state, delta);
     render();
+
+    // Son plateau part vers ceux qui le regardent, a rythme fixe et sans
+    // attendre : en solo, le transport n'en fait rien.
+    if (estMulti && time - dernierInstantane >= BOARD_MS) {
+      dernierInstantane = time;
+      transport.sendBoard(encodeBoard(state));
+    }
   }
+
+  // Le multiplex continue de tourner apres sa propre defaite : eliminé, on
+  // regarde la fin de la partie plutot que de fixer un plateau mort.
+  if (estMulti && transport) dessineMultiplex(time);
 
   requestAnimationFrame(loop);
 }
@@ -138,14 +227,22 @@ function multiplayerUnavailable() {
  */
 function serverUrl() {
   const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
-  return `${scheme}://${location.hostname}:1985`;
+  return `${scheme}://${location.hostname}:${GAME_PORT}`;
+}
+
+/** Adresse du nom de la machine, servi par le serveur de jeu a cote du WebSocket. */
+function machineUrl() {
+  const scheme = location.protocol === 'https:' ? 'https' : 'http';
+  return `${scheme}://${location.hostname}:${GAME_PORT}/nom`;
 }
 
 /** Messages du serveur qui concernent l'attente et la connexion, pas le jeu. */
 function onNetworkStatus(status) {
   switch (status.kind) {
     case 'waiting': {
-      const joueurs = `${status.players} joueur${status.players > 1 ? 's' : ''}`;
+      // Les pseudos plutot que le seul compte : on voit qui est deja la.
+      const presents = status.names?.length ? status.names.join(', ') : '';
+      const joueurs = presents || `${status.players} joueur${status.players > 1 ? 's' : ''}`;
       const manque = status.min - status.players;
       waitingText.textContent = manque > 0
         ? `Salon : ${joueurs}. Il en faut ${status.min} pour commencer.`
@@ -157,9 +254,14 @@ function onNetworkStatus(status) {
     }
     case 'start':
       remaining.textContent = status.players.length;
+      // Les vignettes attendent l'identifiant local, connu une fois start()
+      // resolu : on retient la composition en attendant.
+      salon = { players: status.players, names: status.names ?? {} };
       break;
     case 'eliminated':
       if (status.self) outcome = 'eliminated';
+      // Un joueur sorti n'a plus de plateau a montrer : la camera l'ignore.
+      if (rivaux.has(status.playerId)) rivaux.get(status.playerId).vivant = false;
       remaining.textContent = status.remaining;
       render();
       break;
@@ -186,31 +288,29 @@ function onNetworkStatus(status) {
  * Envoie un handicap aux autres joueurs apres un effacement de plusieurs
  * lignes : des blocs qui leur tomberont du haut.
  *
- * Les colonnes sont tirees ici, une fois, et voyagent avec l'action : tous les
- * receveurs subissent donc exactement les memes blocs. Les tirer chez chacun
- * donnerait des plateaux differents, et les tirer avec le generateur du jeu
- * ferait diverger la suite de pieces.
+ * Le tirage des colonnes vit dans net/garbage.js, partage avec les adversaires
+ * artificiels : ils penalisent leurs voisins par le meme canal, et il ne doit y
+ * avoir qu'une seule facon de tirer un handicap dans le jeu.
  *
  * @param {number} cleared lignes effacees d'un coup
  */
 function sendGarbage(cleared) {
-  const count = GARBAGE_SENT[cleared] ?? 0;
-  if (count === 0) return;
-
-  // Une passe = chaque colonne au plus une fois. En enchainant des passes
-  // melangees, les blocs se repartissent au lieu de s'empiler au meme endroit,
-  // tout en restant imprevisibles.
-  const columns = [];
-  while (columns.length < count) {
-    const passe = [...Array(COLS).keys()];
-    for (let i = passe.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [passe[i], passe[j]] = [passe[j], passe[i]];
-    }
-    columns.push(...passe.slice(0, count - columns.length));
-  }
+  const columns = drawGarbageColumns(cleared);
+  if (columns.length === 0) return;
 
   dispatch({ type: 'garbage', columns });
+}
+
+/**
+ * Le pseudo saisi, retenu d'une partie a l'autre.
+ *
+ * Il n'est pas impose : le serveur remplace un pseudo vide par un nom par
+ * defaut. Refuser de lancer la partie pour un champ vide couterait plus au
+ * joueur que cela ne rapporte a l'affichage.
+ */
+function pseudoChoisi() {
+  // L'enregistrement se fait a la saisie, pas ici : il n'y a plus qu'a lire.
+  return pseudo.value.trim();
 }
 
 function showMenu(message = '') {
@@ -225,6 +325,16 @@ function showMenu(message = '') {
   state = undefined;
   outcome = null;
   overReported = false;
+
+  // Le multiplex appartient a la partie qui s'acheve : rien n'en survit.
+  estMulti = false;
+  moiId = null;
+  salon = { players: [], names: {} };
+  rivaux.clear();
+  camera = createCamera();
+  rivalRenderer.draw(null);
+  rivalName.textContent = '—';
+  rivalCanvas.classList.remove('danger');
   // Sans cela, « Perdu » resterait affiche sous le menu.
   document.getElementById('overlay').hidden = true;
   waiting.hidden = true;
@@ -254,8 +364,9 @@ async function startGame(mode) {
 
   // Le mode choisit le transport, et rien d'autre : le reste du jeu ignore
   // s'il joue en solo ou en reseau.
-  transport = mode === 'multi'
-    ? createWebSocketTransport(serverUrl())
+  estMulti = mode === 'multi';
+  transport = estMulti
+    ? createWebSocketTransport(serverUrl(), { name: pseudoChoisi() })
     : createLocalTransport();
 
   if (mode === 'multi') {
@@ -268,6 +379,17 @@ async function startGame(mode) {
   // Le compte des joueurs encore en jeu n'a de sens qu'en reseau. Sa place
   // reste reservee en solo : la CSS le masque sans le retirer de la mise en page.
   game.classList.toggle('multi', mode === 'multi');
+
+  // Canal d'affichage : il n'entre jamais dans le moteur. Un instantane
+  // illisible est jete sans consequence, la vignette garde le precedent.
+  transport.onBoard((playerId, board) => {
+    const rival = rivaux.get(playerId);
+    const lu = decodeBoard(board);
+    if (!rival || !lu) return;
+
+    rival.grid = lu.grid;
+    rival.hauteur = lu.hauteur;
+  });
 
   transport.onAction((action, meta) => {
     // Le handicap est la seule action qui s'applique aux AUTRES : celui qui
@@ -291,16 +413,21 @@ async function startGame(mode) {
 
   const pending = transport;
   let seed;
+  let playerId;
   try {
-    ({ seed } = await transport.start());
+    ({ seed, playerId } = await transport.start());
   } catch (error) {
     if (transport === pending) showMenu(error.message);
     return;
   }
 
+  moiId = playerId;
+  construireRivaux();
+
   waiting.hidden = true;
   state = createState(seed);
   lastTime = null;
+  dernierInstantane = 0;
   render();
 
   if (!looping) {
@@ -329,6 +456,8 @@ createKeyboardInput({
   onViewAction: (action) => {
     if (action.type === 'toggleGhost') setGhostVisible(!renderer.isGhostVisible());
     if (action.type === 'toggleMusic') setMusicEnabled(!music.isEnabled());
+    // Changer de plan ne touche a rien d'autre que ce qu'on regarde.
+    if (action.type.startsWith('watch')) commandeCamera(action.type);
   },
 });
 
@@ -356,3 +485,68 @@ updatePad();
 // Valeurs par defaut pour un nouveau joueur : un choix deja enregistre l'emporte.
 setGhostVisible(readPreference(GHOST_PREFERENCE, true));
 setMusicEnabled(readPreference(MUSIC_PREFERENCE, true));
+
+// Les memes commandes qu'au clavier, a portee de souris : le multiplex doit
+// rester pilotable sans connaitre les raccourcis.
+document.getElementById('rival-prev').addEventListener('click', () => commandeCamera('watchPrev'));
+document.getElementById('rival-next').addEventListener('click', () => commandeCamera('watchNext'));
+rivalAuto.addEventListener('click', () => commandeCamera('watchAuto'));
+
+/**
+ * Remplit le champ Pseudo : le dernier pseudo saisi, ou a defaut le nom de la
+ * machine.
+ *
+ * Le nom de la machine est demande au serveur de jeu, le navigateur ne pouvant
+ * pas le lire lui-meme : aucune API ne l'expose, et c'est voulu — ce serait un
+ * identifiant stable de plus offert a tout site visite. Le serveur, qui tourne
+ * sur la machine, le connait, et ne le donne qu'a une page servie depuis cette
+ * meme machine.
+ *
+ * Un pseudo deja saisi n'est jamais remplace : le nom de la machine n'est qu'un
+ * point de depart. Et si le serveur de jeu n'est pas lance, le champ reste vide
+ * — on n'empeche personne de jouer en solo faute d'avoir trouve un nom.
+ */
+async function remplirPseudo() {
+  const retenu = readTextPreference(PSEUDO_PREFERENCE, '');
+  pseudo.value = retenu;
+  if (retenu) return;
+
+  const machine = await nomDeMachine();
+  // Le joueur a pu commencer a taper pendant la requete : on ne lui prend pas
+  // le clavier des mains.
+  if (pseudo.value) return;
+
+  if (machine) {
+    // Le nom de la machine n'est volontairement pas enregistre : il est
+    // redemande a chaque visite, et suit donc la machine si on la renomme.
+    pseudo.value = machine;
+    return;
+  }
+
+  // Machine inconnue — c'est le cas de tout invite du reseau local. Un nom tire
+  // au sort vaut mieux qu'un champ vide, et celui-la est retenu aussitot : sans
+  // cela le joueur changerait d'identite a chaque rechargement, et les autres ne
+  // le reconnaitraient jamais d'une partie sur l'autre.
+  pseudo.value = randomName();
+  writePreference(PSEUDO_PREFERENCE, pseudo.value);
+}
+
+/** Le nom de la machine selon le serveur de jeu, ou une chaine vide. */
+async function nomDeMachine() {
+  try {
+    const reponse = await fetch(machineUrl());
+    const { name } = await reponse.json();
+    return typeof name === 'string' ? name : '';
+  } catch {
+    // Serveur de jeu absent ou injoignable : on n'empeche personne de jouer en
+    // solo faute d'avoir trouve un nom.
+    return '';
+  }
+}
+
+// Le pseudo est retenu des qu'il change, et non au lancement d'une partie en
+// reseau seulement : un joueur qui le corrige puis joue en solo, ou qui ferme
+// l'onglet sans jouer, doit le retrouver tel quel a sa prochaine visite.
+pseudo.addEventListener('input', () => writePreference(PSEUDO_PREFERENCE, pseudo.value.trim()));
+
+remplirPseudo();

@@ -11,6 +11,20 @@
 </head>
 <body>
   <main class="game">
+    <!-- Le multiplex garde sa colonne meme en solo, ou il est simplement
+         invisible : la faire apparaitre au passage en reseau decalerait tout le
+         plateau, exactement comme la ligne « En jeu » du panneau. -->
+    <section class="rival multi-only" aria-label="Plateau d'un adversaire">
+      <h2>Multiplex</h2>
+      <div class="rival-head">
+        <button type="button" id="rival-prev" aria-label="Joueur précédent">‹</button>
+        <span id="rival-name">—</span>
+        <button type="button" id="rival-next" aria-label="Joueur suivant">›</button>
+      </div>
+      <canvas id="rival" width="100" height="200" aria-label="Plateau de l'adversaire regardé"></canvas>
+      <button type="button" id="rival-auto" class="rival-auto" aria-pressed="true">Auto</button>
+    </section>
+
     <!-- Le pave reste sous le plateau, en colonne comme en ligne : ailleurs, il
          formerait une troisieme colonne et elargirait toute la boite. -->
     <div class="board-column">
@@ -64,13 +78,170 @@
           <li><kbd>P</kbd> pause</li>
           <li><kbd>G</kbd> projection</li>
           <li><kbd>M</kbd> musique</li>
+          <li class="multi-only"><kbd>Maj</kbd>+<kbd>←</kbd> <kbd>→</kbd> changer de plan</li>
+          <li class="multi-only"><kbd>A</kbd> réalisation auto</li>
         </ul>
       </section>
     </aside>
 
     <div id="menu" class="overlay menu">
+      <!--
+        Saint-Basile-le-Bienheureux, sur la place Rouge : le batiment que les
+        premiers Tetris montraient, et la meme raison que le Я du titre — le jeu
+        est ne a Moscou.
+
+        La palette est celle de l'ecran-titre d'origine : brique rouge, bulbes
+        bleus rayes, coupoles dorees. C'est a cela qu'on la reconnait — une
+        Saint-Basile grise ou aux couleurs du theme ne serait plus la bonne.
+
+        Dessinee ici plutot que chargee : une image de plus serait une requete de
+        plus, et ce menu doit s'afficher avant meme que le serveur reponde.
+      -->
+      <svg class="menu-art" viewBox="0 -30 240 176" role="img"
+           aria-label="Cathédrale Saint-Basile, à Moscou, sous un feu d'artifice">
+        <!--
+          Le feu d'artifice, comme sur l'ecran-titre d'origine.
+
+          Il ouvre le dessin : c'est le fond, tout le reste passe devant. Le
+          viewBox monte a -30 pour lui faire du ciel — sans cela les gerbes
+          n'auraient que les clochers pour s'epanouir.
+
+          Chaque gerbe est un seul trace de douze rayons, aux bouts arrondis :
+          douze traits valent mieux que douze traits plus douze pastilles, et a
+          cette taille on ne voit pas la difference. L'animation est en CSS, donc
+          sans boucle a nous : rien ne tourne pendant la partie, l'ecran de menu
+          etant retire du flux des qu'elle commence.
+        -->
+        <g class="art-feux">
+          <g transform="translate(0 0)">
+            <path class="feu feu-bleu" d="M50.8 -6 62 -6 M49.9 -2.6 59.6 3 M47.4 -.1 53 9.6 M44 .8 44 12 M40.6 -.1 35 9.6 M38.1 -2.6 28.4 3 M37.2 -6 26 -6 M38.1 -9.4 28.4 -15 M40.6 -11.9 35 -21.6 M44 -12.8 44 -24 M47.4 -11.9 53 -21.6 M49.9 -9.4 59.6 -15"/>
+            <path class="feu feu-or" d="M203.7 -12 213 -12 M202.9 -9.2 211 -4.5 M200.9 -7.1 205.5 1 M198 -6.3 198 3 M195.2 -7.1 190.5 1 M193.1 -9.2 185 -4.5 M192.3 -12 183 -12 M193.1 -14.8 185 -19.5 M195.2 -16.9 190.5 -25 M198 -17.7 198 -27 M200.9 -16.9 205.5 -25 M202.9 -14.8 211 -19.5"/>
+            <path class="feu feu-vert" d="M100.2 -17 107 -17 M99 -14 103.8 -9.2 M96 -12.8 96 -6 M93 -14 88.2 -9.2 M91.8 -17 85 -17 M93 -20 88.2 -24.8 M96 -21.2 96 -28 M99 -20 103.8 -24.8"/>
+          </g>
+        </g>
+
+        <!-- Tours exterieures, les plus basses : dessinees en premier, tout
+             passe devant elles. -->
+        <g class="art-mur">
+          <rect x="15" y="92" width="26" height="24"/>
+          <rect x="199" y="92" width="26" height="24"/>
+        </g>
+        <g class="art-corniche">
+          <rect x="13" y="88" width="30" height="5"/>
+          <rect x="197" y="88" width="30" height="5"/>
+        </g>
+        <g class="art-tambour">
+          <rect x="20" y="76" width="16" height="12"/>
+          <rect x="204" y="76" width="16" height="12"/>
+        </g>
+        <path fill="#3451d6" d="M17 76 C13 69 18.8 60.4 28 56 C37.2 60.4 43 69 39 76 Z"/>
+        <path fill="#3451d6" d="M201 76 C197 69 202.8 60.4 212 56 C221.2 60.4 227 69 223 76 Z"/>
+        <g class="art-rayure">
+          <path d="M28 56 C23.5 63 21 70 20.5 76 M28 56 V76 M28 56 C32.5 63 35 70 35.5 76"/>
+          <path d="M212 56 C207.5 63 205 70 204.5 76 M212 56 V76 M212 56 C216.5 63 219 70 219.5 76"/>
+        </g>
+        <g class="art-fleche">
+          <path d="M28 56 V47 M212 56 V47"/>
+          <circle cx="28" cy="44.5" r="2.5"/>
+          <circle cx="212" cy="44.5" r="2.5"/>
+        </g>
+
+        <!-- Les deux grands bulbes bleus qui encadrent le clocher. -->
+        <g class="art-mur">
+          <rect x="49" y="79" width="34" height="37"/>
+          <rect x="157" y="79" width="34" height="37"/>
+        </g>
+        <g class="art-corniche">
+          <rect x="47" y="74" width="38" height="6"/>
+          <rect x="155" y="74" width="38" height="6"/>
+        </g>
+        <g class="art-tambour">
+          <rect x="55" y="58" width="22" height="16"/>
+          <rect x="163" y="58" width="22" height="16"/>
+        </g>
+        <path fill="#3451d6" d="M51 58 C45.6 48.2 53.4 36.2 66 30 C78.6 36.2 86.4 48.2 81 58 Z"/>
+        <path fill="#3451d6" d="M159 58 C153.6 48.2 161.4 36.2 174 30 C186.6 36.2 194.4 48.2 189 58 Z"/>
+        <g class="art-rayure">
+          <path d="M66 30 C60.5 40 57 49 56.5 58 M66 30 V58 M66 30 C71.5 40 75 49 75.5 58"/>
+          <path d="M174 30 C168.5 40 165 49 164.5 58 M174 30 V58 M174 30 C179.5 40 183 49 183.5 58"/>
+        </g>
+        <g class="art-fleche">
+          <path d="M66 30 V19 M174 30 V19"/>
+          <circle cx="66" cy="16.5" r="3"/>
+          <circle cx="174" cy="16.5" r="3"/>
+        </g>
+
+        <!--
+          Le clocher central : le toit en cone, nervure d'or, coiffe d'un bulbe
+          dore. C'est la silhouette que tout le monde reconnait, et c'est pour
+          elle que l'image est la — elle doit donc passer devant le reste.
+        -->
+        <rect class="art-mur" x="96" y="75" width="48" height="41"/>
+        <rect class="art-corniche" x="92" y="70" width="56" height="6"/>
+        <path class="art-toit" d="M92 70 L120 26 L148 70 Z"/>
+        <path class="art-nervure" d="M120 26 L104 70 M120 26 V70 M120 26 L136 70"/>
+        <rect class="art-tambour" x="115" y="19" width="10" height="8"/>
+        <path fill="#f2c53d" d="M111 19 C107.8 14.5 112.4 8.9 120 6 C127.6 8.9 132.2 14.5 129 19 Z"/>
+        <g class="art-fleche">
+          <path d="M120 6 V0 M116 2.5 H124"/>
+        </g>
+
+        <!-- Deux tourelles a bulbe dore, en avant du clocher : elles donnent la
+             profondeur qui manque a un alignement de tours. -->
+        <g class="art-mur">
+          <rect x="78" y="104" width="22" height="12"/>
+          <rect x="140" y="104" width="22" height="12"/>
+        </g>
+        <g class="art-tambour">
+          <rect x="82" y="92" width="14" height="12"/>
+          <rect x="144" y="92" width="14" height="12"/>
+        </g>
+        <path fill="#f2c53d" d="M78 92 C74 85.4 79.8 77.2 89 73 C98.2 77.2 104 85.4 100 92 Z"/>
+        <path fill="#f2c53d" d="M140 92 C136 85.4 141.8 77.2 151 73 C160.2 77.2 166 85.4 162 92 Z"/>
+        <g class="art-fleche">
+          <path d="M89 73 V65 M151 73 V65"/>
+          <circle cx="89" cy="62.5" r="2.5"/>
+          <circle cx="151" cy="62.5" r="2.5"/>
+        </g>
+
+        <!-- Fenetres etroites : ce qui donne l'echelle a l'ensemble. -->
+        <g class="art-ouverture">
+          <rect x="25.5" y="100" width="5" height="12" rx="2.5"/>
+          <rect x="209.5" y="100" width="5" height="12" rx="2.5"/>
+          <rect x="63" y="90" width="6" height="16" rx="3"/>
+          <rect x="171" y="90" width="6" height="16" rx="3"/>
+          <rect x="103" y="86" width="5" height="17" rx="2.5"/>
+          <rect x="117.5" y="86" width="5" height="17" rx="2.5"/>
+          <rect x="132" y="86" width="5" height="17" rx="2.5"/>
+          <rect x="87" y="107" width="4" height="9" rx="2"/>
+          <rect x="149" y="107" width="4" height="9" rx="2"/>
+        </g>
+
+        <!-- Le soubassement et sa galerie d'arcades, qui pose tout l'edifice. -->
+        <rect class="art-corniche" x="14" y="116" width="212" height="6"/>
+        <rect class="art-mur" x="16" y="122" width="208" height="18"/>
+        <g class="art-arcade">
+          <path d="M26 140 V131 A7 7 0 0 1 40 131 V140 Z"/>
+          <path d="M48 140 V131 A7 7 0 0 1 62 131 V140 Z"/>
+          <path d="M70 140 V131 A7 7 0 0 1 84 131 V140 Z"/>
+          <path d="M92 140 V131 A7 7 0 0 1 106 131 V140 Z"/>
+          <path d="M134 140 V131 A7 7 0 0 1 148 131 V140 Z"/>
+          <path d="M156 140 V131 A7 7 0 0 1 170 131 V140 Z"/>
+          <path d="M178 140 V131 A7 7 0 0 1 192 131 V140 Z"/>
+          <path d="M200 140 V131 A7 7 0 0 1 214 131 V140 Z"/>
+        </g>
+        <path class="art-porche" d="M108 140 V134 A12 12 0 0 1 132 134 V140 Z"/>
+        <rect class="art-sol" x="8" y="140" width="224" height="4"/>
+      </svg>
+
       <!-- Le R est retourne, clin d'oeil au Я cyrillique : le jeu est ne a Moscou. -->
       <h1>Tet<span class="mirrored">r</span>is</h1>
+      <!-- Le pseudo sert au multiplex : sans lui, « qui est en difficulte » ne
+           designerait qu'un identifiant que personne ne reconnait. -->
+      <label class="menu-field">
+        <span>Pseudo</span>
+        <input type="text" id="pseudo" maxlength="16" autocomplete="off" placeholder="Pseudo">
+      </label>
       <div class="menu-actions">
         <button type="button" id="play-solo">Partie solo</button>
         <button type="button" id="play-multi">Multijoueur</button>

@@ -263,17 +263,94 @@ describe('blocs de handicap', () => {
   });
 });
 
-describe('handicap qui complete une rangee', () => {
-  it('efface la rangee comblee par un bloc, sans rien rapporter', () => {
-    // Une rangee a laquelle il ne manque qu une case, comblee par le handicap.
-    const state = createState(SEED);
+describe('handicap qui bouclerait une rangee', () => {
+  /** Une rangee a laquelle il ne manque que la colonne 0. */
+  function rangeeIncomplete(state, ligne) {
     const grid = state.grid.map((row) => row.slice());
-    for (let col = 1; col < COLS; col++) grid[ROWS - 1][col] = '#ffffff';
+    for (let col = 1; col < COLS; col++) grid[ligne][col] = '#ffffff';
+    return { ...state, grid };
+  }
 
-    const apres = reduce({ ...state, grid }, { type: 'garbage', columns: [0] });
+  it('pose le bloc ailleurs plutot que de completer la rangee', () => {
+    // Completer la rangee l'effacerait, donc allegerait la pile de celui qui
+    // subit le handicap : ce serait un cadeau, pas une gene.
+    const state = rangeeIncomplete(createState(SEED), ROWS - 1);
+    const apres = reduce(state, { type: 'garbage', columns: [0] });
 
-    assert.ok(apres.grid[ROWS - 1].every((cell) => cell === null), 'la rangee a disparu');
+    assert.equal(apres.grid[ROWS - 1][0], null, 'le trou de la rangee reste ouvert');
+    assert.ok(apres.grid[ROWS - 1].some((cell) => cell === null), 'la rangee n est pas pleine');
+
+    const occupees = (s) => s.grid.flat().filter(Boolean).length;
+    assert.equal(occupees(apres), occupees(state) + 1, 'le bloc est tombe, mais ailleurs');
+  });
+
+  it('ne fait jamais disparaitre de cases, ni gagner de lignes', () => {
+    const state = rangeeIncomplete(createState(SEED), ROWS - 1);
+    const columns = Array.from({ length: 20 }, (_, i) => i % COLS);
+    const apres = reduce(state, { type: 'garbage', columns });
+
+    for (const row of apres.grid) {
+      assert.ok(row.some((cell) => cell === null), 'aucune rangee pleine ne subsiste');
+    }
     assert.equal(apres.lines, state.lines, 'aucune ligne portee au compteur');
-    assert.equal(apres.score, state.score, 'aucun point : ce n est pas le joueur qui l a faite');
+    assert.equal(apres.score, state.score, 'aucun point');
+  });
+});
+
+describe('handicap au ras du plafond', () => {
+  const occupees = (state) => state.grid.flat().filter(Boolean).length;
+  const casesPiece = (piece) => piece.cells.flat().filter(Boolean).length;
+  /** Ligne ou commence le remplissage de la piece : ses lignes vides du haut ne comptent pas. */
+  const marge = (piece) => piece.cells.findIndex((row) => row.some(Boolean));
+
+  /** Etat ou la piece est rattrapee par des blocs dans toutes ses colonnes. */
+  function pieceRattrapee(hauteur) {
+    const state = createState(SEED);
+    const current = { ...state.current, y: hauteur };
+    const colonnes = new Set();
+    current.cells.forEach((row, y) => row.forEach((value, x) => {
+      if (value) colonnes.add(current.x + x);
+    }));
+
+    // De quoi remplir ces colonnes jusqu'au plafond : la piece n'a plus de
+    // place nulle part, et la remontee ira au bout de ce qu'elle s'autorise.
+    const columns = [];
+    for (let i = 0; i < ROWS; i++) for (const col of colonnes) columns.push(col);
+
+    return reduce({ ...state, current }, { type: 'garbage', columns });
+  }
+
+  it('ne remonte jamais la piece au-dessus du plafond', () => {
+    const apres = pieceRattrapee(ROWS - 4);
+
+    assert.ok(
+      apres.current.y + marge(apres.current) >= 0,
+      `aucune case au-dessus du plafond (y=${apres.current.y})`,
+    );
+  });
+
+  it('ne perd aucune case de la piece en la verrouillant', () => {
+    // Une remontee sans limite sortait des cases du plateau : elles
+    // disparaissaient au verrouillage, et le joueur voyait sa pile maigrir.
+    const avant = pieceRattrapee(ROWS - 6);
+    if (avant.status === STATUS.OVER) return; // plus rien a verrouiller
+
+    const apres = reduce(avant, { type: 'hardDrop' });
+    const efface = COLS * (apres.lines - avant.lines);
+
+    assert.equal(occupees(apres), occupees(avant) + casesPiece(avant.current) - efface);
+  });
+
+  it('refuse une rotation qui ferait sortir la piece par le haut', () => {
+    // La piece I remontee d'un cran : sa ligne pleine est alors tout en haut du
+    // plateau, et la tourner mettrait trois de ses cases au-dessus du plafond.
+    const state = createState(SEED);
+    const cells = [[0, 0, 0, 0], [1, 1, 1, 1], [0, 0, 0, 0], [0, 0, 0, 0]];
+    const current = { ...state.current, cells, x: 3, y: -1 };
+    const apres = reduce({ ...state, current }, { type: 'rotate' });
+
+    apres.current.cells.forEach((row, y) => row.forEach((value, x) => {
+      if (value) assert.ok(apres.current.y + y >= 0, `case (${x}, ${y}) sous le plafond`);
+    }));
   });
 });

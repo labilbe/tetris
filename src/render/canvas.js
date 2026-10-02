@@ -37,6 +37,34 @@ function drawGridLines(ctx) {
 }
 
 /**
+ * Vignette d'un plateau adverse.
+ *
+ * Elle ne connait qu'une grille de couleurs — ce qui arrive du reseau — et pas
+ * d'etat de jeu : pas de piece courante, pas de projection, rien a deduire.
+ * C'est volontaire : on regarde jouer quelqu'un, on ne rejoue pas sa partie.
+ *
+ * @param {HTMLCanvasElement} canvas
+ */
+export function createRivalRenderer(canvas) {
+  const ctx = canvas.getContext('2d');
+  const cell = canvas.width / COLS;
+
+  return {
+    /** @param {(string|null)[][] | null} grid null tant que rien n'est arrive */
+    draw(grid) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (!grid) return;
+
+      grid.forEach((row, y) => {
+        row.forEach((color, x) => {
+          if (color) drawCell(ctx, x, y, color, cell);
+        });
+      });
+    },
+  };
+}
+
+/**
  * @param {{ board: HTMLCanvasElement, next: HTMLCanvasElement }} canvases
  */
 export function createRenderer({ board, next }) {

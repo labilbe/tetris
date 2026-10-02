@@ -20,6 +20,20 @@ export function readPreference(key, fallback) {
   }
 }
 
+/**
+ * Meme stockage, sans interpretation : le pseudo est du texte, pas un oui-non.
+ *
+ * @param {string} key
+ * @param {string} fallback
+ */
+export function readTextPreference(key, fallback = '') {
+  try {
+    return localStorage.getItem(key) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 export function writePreference(key, value) {
   try {
     localStorage.setItem(key, String(value));

@@ -4,7 +4,7 @@ import { STATUS } from '../engine/constants.js';
 
 const OVERLAY_TEXT = {
   [STATUS.PAUSED]: 'Pause',
-  [STATUS.OVER]: 'Game over',
+  [STATUS.OVER]: 'Partie terminée',
 };
 
 /** En reseau, le resultat prime sur l'etat du plateau. */

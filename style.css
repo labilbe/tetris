@@ -210,6 +210,102 @@ kbd {
 /* display: flex ci-dessus l'emporterait sur le style navigateur de [hidden]. */
 .overlay[hidden] { display: none; }
 
+/*
+ * Saint-Basile, au-dessus du titre.
+ *
+ * Les couleurs ne viennent pas des variables du theme : elles viennent de
+ * l'ecran-titre d'origine, et c'est a elles qu'on reconnait le batiment. Les
+ * passer au gris de l'interface reviendrait a dessiner une autre cathedrale.
+ */
+.menu-art {
+  width: 240px;
+  height: auto;
+  /* Le dessin porte son propre sol : le rapprocher du titre les lie, au lieu
+     de laisser l'edifice flotter. */
+  margin-bottom: -6px;
+}
+
+/*
+ * Le feu d'artifice.
+ *
+ * Chaque gerbe part d'un point, s'ouvre et s'eteint, puis attend son tour : la
+ * pause occupe plus de la moitie du cycle, et les trois decalages font qu'il en
+ * eclate une a la fois. Un ciel ou tout part ensemble, en boucle serree, finit
+ * par tirer l'oeil hors du menu — ce qu'un fond ne doit jamais faire.
+ *
+ * transform-box: fill-box est indispensable : sans lui, l'echelle prendrait pour
+ * centre l'origine du SVG et la gerbe partirait en diagonale au lieu de s'ouvrir
+ * sur place.
+ */
+.menu-art .feu {
+  fill: none;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: gerbe 5.4s ease-out infinite;
+}
+
+.menu-art .feu-bleu { stroke: #5ac8fa; }
+.menu-art .feu-or { stroke: #f2c53d; animation-delay: 1.8s; }
+.menu-art .feu-vert { stroke: #63d471; animation-delay: 3.4s; }
+
+@keyframes gerbe {
+  /* Le depart : un point dense, deja lumineux. */
+  0% { transform: scale(.12); opacity: 0; }
+  4% { opacity: 1; }
+  /* L'ouverture ralentit en s'eteignant, comme une vraie gerbe. */
+  34% { opacity: .85; }
+  46% { transform: scale(1); opacity: 0; }
+  /* Puis le ciel reste vide jusqu'au tour suivant. */
+  100% { transform: scale(1); opacity: 0; }
+}
+
+/*
+ * Mouvement reduit : la gerbe reste, figee et discrete. L'effacer priverait le
+ * dessin de son ciel ; la laisser clignoter irait contre la demande.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .menu-art .feu {
+    animation: none;
+    opacity: .4;
+  }
+}
+
+.menu-art .art-mur { fill: #cf4038; }
+.menu-art .art-corniche { fill: #e8675c; }
+.menu-art .art-tambour { fill: #a93029; }
+.menu-art .art-toit { fill: #c3372f; }
+.menu-art .art-ouverture { fill: #6e1a16; }
+.menu-art .art-arcade { fill: #3451d6; }
+.menu-art .art-porche { fill: #2a1013; }
+.menu-art .art-sol { fill: #8f241e; }
+
+/* Les rayures claires des bulbes bleus, et les nervures d'or du cone : des
+   traits, jamais des surfaces — remplis, ils mangeraient la coupole. */
+.menu-art .art-rayure {
+  fill: none;
+  stroke: #dde4ff;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.menu-art .art-nervure {
+  fill: none;
+  stroke: #f2c53d;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  opacity: .65;
+}
+
+/* Fleches, croix et boules : l'or qui termine chaque tour. */
+.menu-art .art-fleche {
+  fill: #f2c53d;
+  stroke: #f2c53d;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+
 .menu h1 {
   margin: 0;
   font-size: 40px;
@@ -283,10 +379,118 @@ kbd {
   .help { display: none; }
 }
 
+/* Le menu doit tenir entier : la cathedrale cede la place avant les boutons,
+   et disparait plutot que de les pousser hors de la boite. */
+@media (max-height: 820px) {
+  .menu-art { width: 180px; }
+}
+
+@media (max-height: 620px) {
+  .menu-art { display: none; }
+}
+
 /* Ecran etroit (telephone) : le panneau passe sous le plateau. Le pave, lui,
    reste sous le plateau dans les deux cas : c'est la colonne qui le porte. */
 @media (max-width: 700px) {
   .game { flex-direction: column; align-items: center; }
   .panel { width: 300px; }
   .help { display: none; }
+
+  /* En colonne, reserver la place du multiplex couterait 200 px de hauteur a
+     toute partie solo. Ici il n'apparait donc qu'en reseau : le decalage qu'on
+     evite sur grand ecran n'a pas de sens dans une pile verticale. */
+  .rival { display: none; }
+  .game.multi .rival { display: flex; width: 300px; }
+  .game.multi .rival .rival-head { justify-self: center; }
+}
+
+/*
+ * Le multiplex : une vignette etroite a gauche du plateau.
+ *
+ * Sa largeur est fixe et reservee en solo (voir .multi-only) pour que le
+ * passage en reseau ne decale rien. La vignette garde ses 100x200 internes,
+ * comme le plateau garde ses 300x600 : le rendu dessine toujours dans les
+ * memes coordonnees.
+ */
+.rival {
+  width: 110px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rival-head {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 4px;
+}
+
+.rival-head span {
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  /* Un pseudo trop long ne doit pas elargir la colonne. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rival-head button {
+  padding: 2px 6px;
+  font-size: 14px;
+  line-height: 1;
+  background: none;
+  border: 1px solid var(--grid);
+  color: var(--muted);
+}
+
+.rival-head button:hover { color: var(--text); }
+
+#rival {
+  width: 100px;
+  height: 200px;
+}
+
+/* Le plan suivi est celui d'un joueur en difficulte : la vignette le dit. */
+#rival.danger { outline: 2px solid var(--accent); }
+
+.rival-auto {
+  padding: 4px;
+  font-size: 12px;
+  background: none;
+  border: 1px solid var(--grid);
+  color: var(--muted);
+}
+
+/* aria-pressed porte l'etat : le style le suit plutot que de le dupliquer. */
+.rival-auto[aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.menu-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.menu-field input {
+  width: 180px;
+  padding: 8px 10px;
+  text-align: center;
+  font: inherit;
+  font-size: 15px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--grid);
+  border-radius: 6px;
+}
+
+.menu-field input:focus {
+  outline: none;
+  border-color: var(--accent);
 }

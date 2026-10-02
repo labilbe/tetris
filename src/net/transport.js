@@ -9,8 +9,10 @@
  * Contrat commun :
  *   start()            -> Promise<{ seed, playerId }>
  *   send(action)       -> void                 emet une action locale
+ *   sendBoard(board)   -> void                 emet un instantane de plateau
  *   onAction(listener) -> () => void           listener(action, { playerId, self })
  *   onStatus(listener) -> () => void           attente, depart, erreur
+ *   onBoard(listener)  -> () => void           listener(playerId, board)
  *   close()            -> void
  *
  * Le meta `self` est essentiel en reseau : les actions de l'adversaire arrivent
@@ -33,6 +35,12 @@ export function createLocalTransport(seed = randomSeed()) {
     },
     send(action) {
       for (const listener of listeners) listener(action, { playerId: LOCAL_PLAYER, self: true });
+    },
+    sendBoard() {
+      // En solo, personne ne regarde : l'instantane n'a pas de destinataire.
+    },
+    onBoard() {
+      return () => {};
     },
     reportGameOver() {
       // En solo, personne d'autre n'a besoin de le savoir.
@@ -72,9 +80,10 @@ export function createLocalTransport(seed = randomSeed()) {
  */
 const CONNECT_TIMEOUT_MS = 8000;
 
-export function createWebSocketTransport(url, { room = DEFAULT_ROOM } = {}) {
+export function createWebSocketTransport(url, { room = DEFAULT_ROOM, name = '' } = {}) {
   const actionListeners = new Set();
   const statusListeners = new Set();
+  const boardListeners = new Set();
 
   /** @type {WebSocket | null} */
   let socket = null;
@@ -103,7 +112,7 @@ export function createWebSocketTransport(url, { room = DEFAULT_ROOM } = {}) {
 
         socket.addEventListener('open', () => {
           clearTimeout(timeout);
-          socket.send(encode({ type: CLIENT.JOIN, room }));
+          socket.send(encode({ type: CLIENT.JOIN, room, name }));
         });
 
         socket.addEventListener('message', (event) => {
@@ -113,7 +122,12 @@ export function createWebSocketTransport(url, { room = DEFAULT_ROOM } = {}) {
           switch (message.type) {
             case SERVER.START:
               playerId = message.playerId;
-              notifyStatus({ kind: 'start', room: message.room, players: message.players });
+              notifyStatus({
+                kind: 'start',
+                room: message.room,
+                players: message.players,
+                names: message.names ?? {},
+              });
               resolve({ seed: message.seed, playerId });
               break;
             case SERVER.WAITING:
@@ -122,7 +136,12 @@ export function createWebSocketTransport(url, { room = DEFAULT_ROOM } = {}) {
                 room: message.room,
                 players: message.players,
                 min: message.min,
+                names: message.names ?? [],
               });
+              break;
+            case SERVER.BOARD:
+              // Purement decoratif : aucun ecouteur d'action n'en entend parler.
+              for (const listener of boardListeners) listener(message.playerId, message.board);
               break;
             case SERVER.ACTION:
               for (const listener of actionListeners) {
@@ -177,6 +196,23 @@ export function createWebSocketTransport(url, { room = DEFAULT_ROOM } = {}) {
       }
     },
 
+    /**
+     * Emet un instantane de son plateau pour ceux qui regardent.
+     *
+     * Rien ne garantit ni ne verifie son arrivee : c'est de l'affichage, il
+     * part comme il peut et le suivant corrigera.
+     */
+    sendBoard(board) {
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(encode({ type: CLIENT.BOARD, board }));
+      }
+    },
+
+    onBoard(listener) {
+      boardListeners.add(listener);
+      return () => boardListeners.delete(listener);
+    },
+
     /** Signale sa propre defaite : elle vaut elimination. */
     reportGameOver() {
       if (socket && socket.readyState === WebSocket.OPEN) {
@@ -204,6 +240,7 @@ export function createWebSocketTransport(url, { room = DEFAULT_ROOM } = {}) {
     close() {
       actionListeners.clear();
       statusListeners.clear();
+      boardListeners.clear();
       if (socket) socket.close();
     },
   };

@@ -7,13 +7,14 @@
  * server/index.js se charge du reseau et n'a plus de logique a lui.
  */
 
-import { MIN_PLAYERS } from '../src/net/protocol.js';
+import { MIN_PLAYERS, cleanName } from '../src/net/protocol.js';
 
 /**
  * @typedef {{
  *   code: string,
  *   seed: number,
  *   players: string[],
+ *   names: Record<string, string>,
  *   eliminated: string[],
  *   started: boolean,
  *   finished: boolean,
@@ -42,6 +43,23 @@ function put(lobby, room) {
 }
 
 /**
+ * Rend un pseudo unique dans le salon.
+ *
+ * Deux « Franck » a l'ecran ne designeraient plus personne : la camera dirait
+ * qu'elle regarde Franck sans qu'on sache lequel. Le second prend donc un
+ * numero, et c'est le tardif qui le porte.
+ */
+function nomLibre(room, souhaite) {
+  const pris = new Set(Object.values(room.names ?? {}));
+  if (!pris.has(souhaite)) return souhaite;
+
+  for (let suffixe = 2; ; suffixe++) {
+    const candidat = `${souhaite} ${suffixe}`;
+    if (!pris.has(candidat)) return candidat;
+  }
+}
+
+/**
  * Fait entrer un joueur dans un salon, cree au besoin.
  *
  * La graine est fixee a la creation du salon et ne change plus : c'est elle qui
@@ -49,7 +67,7 @@ function put(lobby, room) {
  *
  * @returns {{ lobby: Lobby, room: Room, joined: boolean }}
  */
-export function join(lobby, code, playerId, seed) {
+export function join(lobby, code, playerId, seed, name) {
   const existing = lobby.rooms[code];
 
   if (existing && existing.players.includes(playerId)) {
@@ -66,13 +84,18 @@ export function join(lobby, code, playerId, seed) {
     code,
     seed,
     players: [],
+    names: {},
     eliminated: [],
     started: false,
     finished: false,
     winner: null,
   };
 
-  const room = { ...base, players: [...base.players, playerId] };
+  const room = {
+    ...base,
+    players: [...base.players, playerId],
+    names: { ...base.names, [playerId]: nomLibre(base, cleanName(name)) },
+  };
   return { lobby: put(lobby, room), room, joined: true };
 }
 
@@ -123,6 +146,33 @@ export function eliminate(lobby, playerId) {
 }
 
 /**
+ * Ferme le salon d'une partie terminee.
+ *
+ * Un salon lance refuse les arrivants, et c'est voulu : un retardataire
+ * manquerait le debut et jouerait une autre partie que les autres. Mais ce refus
+ * survivait a la partie. Le salon restait marque « lance » une fois finie, et
+ * comme il ne disparaissait qu'une fois vide, un seul ecran de verdict encore
+ * ouvert suffisait a interdire la partie suivante a tout le monde : « La partie
+ * a deja commence dans ce salon », sans qu'aucune partie ne soit en cours.
+ *
+ * Une partie terminee n'a plus de salon a tenir. Personne n'y joue, et ceux qui
+ * y restent connectes n'ont plus qu'un bouton, « Retour au menu ». On le
+ * supprime donc, et la partie suivante repart d'un salon neuf — graine comprise,
+ * ce qu'une simple reouverture aurait oublie.
+ *
+ * Supprimer plutot que rouvrir evite au passage un piege : un joueur encore
+ * devant son verdict compterait comme present dans le salon rouvert, un autre
+ * pourrait lancer la partie avec ce fantome, et l'attendrait indefiniment.
+ */
+export function closeRoom(lobby, code) {
+  if (!lobby.rooms[code]) return lobby;
+
+  const rooms = { ...lobby.rooms };
+  delete rooms[code];
+  return { ...lobby, rooms };
+}
+
+/**
  * Retire un joueur du salon. Un salon vide disparait.
  *
  * @returns {{ lobby: Lobby, room: Room | null, remaining: string[] }}
@@ -139,9 +189,15 @@ export function leave(lobby, playerId) {
     return { lobby: { ...lobby, rooms }, room, remaining: [] };
   }
 
+  // Le pseudo part avec son joueur : sans cela il resterait pris, et celui qui
+  // revient apres une coupure se verrait numeroter derriere lui-meme.
+  const names = { ...room.names };
+  delete names[playerId];
+
   const updated = {
     ...room,
     players,
+    names,
     eliminated: room.eliminated.filter((id) => id !== playerId),
   };
   rooms[room.code] = updated;
@@ -155,5 +211,7 @@ export function waitingStatus(lobby, room) {
     room: room.code,
     players: room.players.length,
     min: lobby.min,
+    // Les pseudos des presents : on sait qui on attend, et qui est deja la.
+    names: room.players.map((id) => room.names[id]),
   };
 }

@@ -6,7 +6,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { alive, begin, createLobby, eliminate, join, leave, roomOf, waitingStatus } from '../server/rooms.js';
+import { alive, begin, closeRoom, createLobby, eliminate, join, leave, roomOf, waitingStatus } from '../server/rooms.js';
 
 const SEED = 4242;
 
@@ -25,7 +25,7 @@ describe('arrivee dans un salon', () => {
     assert.equal(room.started, false);
     assert.deepEqual(room.players, ['a']);
     assert.equal(room.seed, SEED);
-    assert.deepEqual(waitingStatus(lobby, room), { room: 'test', players: 1, min: 2 });
+    assert.deepEqual(waitingStatus(lobby, room), { room: 'test', players: 1, min: 2, names: ['Joueur'] });
   });
 
   it('accueille plus de deux joueurs', () => {
@@ -181,6 +181,57 @@ describe('eliminations', () => {
   });
 });
 
+describe('fermeture du salon en fin de partie', () => {
+  it('rouvre la porte a celui qui revient apres la partie', () => {
+    // Le bug d'origine : le salon restait marque « lance » une fois la partie
+    // finie, et comme il ne disparait qu'une fois vide, un seul joueur encore
+    // devant son verdict suffisait a refuser tout le monde a la partie
+    // suivante — « La partie a deja commence », sans partie en cours.
+    let lobby = partie(['a', 'b']);
+    lobby = eliminate(lobby, 'a').lobby;
+
+    const avant = join(lobby, 'test', 'c', SEED);
+    assert.equal(avant.joined, false, 'sans fermeture, le salon reste verrouille');
+
+    lobby = closeRoom(lobby, 'test');
+    const apres = join(lobby, 'test', 'c', SEED);
+
+    assert.equal(apres.joined, true);
+    assert.equal(apres.room.started, false, 'le salon neuf attend a nouveau');
+  });
+
+  it('repart sur une graine neuve', () => {
+    // Rejouer la meme suite de pieces ferait de la partie suivante une reprise
+    // de la precedente.
+    let lobby = partie(['a', 'b']);
+    lobby = eliminate(lobby, 'a').lobby;
+    lobby = closeRoom(lobby, 'test');
+
+    const suivante = join(lobby, 'test', 'a', SEED + 1);
+    assert.equal(suivante.room.seed, SEED + 1);
+  });
+
+  it('n emporte que le salon nomme', () => {
+    let lobby = join(createLobby(), 'autre', 'z', SEED).lobby;
+    lobby = closeRoom(lobby, 'test');
+
+    assert.ok(lobby.rooms.autre, 'le salon voisin est intact');
+  });
+
+  it('ne bronche pas sur un salon qui n existe plus', () => {
+    // Deux sorties simultanees peuvent demander la meme fermeture.
+    const lobby = closeRoom(createLobby(), 'fantome');
+    assert.deepEqual(lobby.rooms, {});
+  });
+
+  it('laisse une partie en cours refuser les retardataires', () => {
+    // La protection d'origine doit survivre a la correction : pendant la
+    // partie, un arrivant manquerait le debut.
+    const lobby = partie(['a', 'b']);
+    assert.equal(join(lobby, 'test', 'c', SEED).joined, false);
+  });
+});
+
 describe('depart', () => {
   it('retire le joueur et signale ceux qui restent', () => {
     const sortie = leave(partie(['a', 'b', 'c']), 'a');
@@ -224,5 +275,43 @@ describe('depart', () => {
 
     assert.equal(sortie.room, null);
     assert.deepEqual(sortie.lobby.rooms, {});
+  });
+});
+
+describe('pseudos', () => {
+  it('retient le pseudo de chacun', () => {
+    let lobby = createLobby();
+    lobby = join(lobby, 'test', 'a', SEED, 'Franck').lobby;
+    const entree = join(lobby, 'test', 'b', SEED, 'Léa');
+
+    assert.deepEqual(entree.room.names, { a: 'Franck', b: 'Léa' });
+    assert.deepEqual(waitingStatus(entree.lobby, entree.room).names, ['Franck', 'Léa']);
+  });
+
+  it('remplace un pseudo vide plutot que de laisser un blanc', () => {
+    const { room } = join(createLobby(), 'test', 'a', SEED, '   ');
+    assert.equal(room.names.a, 'Joueur');
+  });
+
+  it('numerote les homonymes', () => {
+    // Deux « Franck » a l'ecran ne designeraient plus personne.
+    let lobby = createLobby();
+    lobby = join(lobby, 'test', 'a', SEED, 'Franck').lobby;
+    lobby = join(lobby, 'test', 'b', SEED, 'Franck').lobby;
+    const troisieme = join(lobby, 'test', 'c', SEED, 'Franck');
+
+    assert.deepEqual(troisieme.room.names, { a: 'Franck', b: 'Franck 2', c: 'Franck 3' });
+  });
+
+  it('libere le pseudo au depart', () => {
+    // Sinon celui qui revient apres une coupure se verrait numeroter derriere
+    // lui-meme.
+    let lobby = createLobby();
+    lobby = join(lobby, 'test', 'a', SEED, 'Franck').lobby;
+    lobby = join(lobby, 'test', 'b', SEED, 'Léa').lobby;
+    lobby = leave(lobby, 'a').lobby;
+
+    const retour = join(lobby, 'test', 'c', SEED, 'Franck');
+    assert.equal(retour.room.names.c, 'Franck');
   });
 });

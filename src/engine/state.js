@@ -93,8 +93,12 @@ export function collides(grid, piece, offsetX = 0, offsetY = 0, cells = piece.ce
       if (!cells[y][x]) continue;
       const nx = piece.x + x + offsetX;
       const ny = piece.y + y + offsetY;
-      if (nx < 0 || nx >= COLS || ny >= ROWS) return true;
-      if (ny >= 0 && grid[ny][nx]) return true;
+      // Le plafond est un bord comme les autres : une case au-dessus n'existe
+      // pas dans la grille, et se perdrait au verrouillage. En chute normale le
+      // cas ne se presente jamais ; il n'apparait qu'au ras du plafond, quand
+      // un handicap a remonte la piece et qu'une rotation la ferait deborder.
+      if (nx < 0 || nx >= COLS || ny < 0 || ny >= ROWS) return true;
+      if (grid[ny][nx]) return true;
     }
   }
   return false;
@@ -111,8 +115,14 @@ function rotateCells(cells) {
   return out;
 }
 
-/** Fige la piece courante dans une copie de la grille. */
-function merge(grid, piece) {
+/**
+ * Fige la piece courante dans une copie de la grille.
+ *
+ * Exportee pour l'adversaire artificiel, qui doit juger un placement avec les
+ * regles du jeu et non avec une copie de celles-ci : une IA qui compterait les
+ * lignes autrement que le moteur viserait des coups qui n'existent pas.
+ */
+export function merge(grid, piece) {
   const next = grid.map((row) => row.slice());
   piece.cells.forEach((row, y) => {
     row.forEach((value, x) => {
@@ -124,8 +134,12 @@ function merge(grid, piece) {
   return next;
 }
 
-/** @returns {{ grid: (string|null)[][], cleared: number }} */
-function clearLines(grid) {
+/**
+ * Retire les rangees pleines. Exportee pour la meme raison que merge.
+ *
+ * @returns {{ grid: (string|null)[][], cleared: number }}
+ */
+export function clearLines(grid) {
   const kept = grid.filter((row) => row.some((cell) => cell === null));
   const cleared = ROWS - kept.length;
   if (cleared === 0) return { grid, cleared };
@@ -209,15 +223,15 @@ function applyGravity(state) {
 }
 
 /**
- * Ajoute des lignes de handicap par le bas : la pile remonte d'autant.
+ * Fait tomber des blocs de handicap, un par colonne demandee.
  *
- * Les colonnes trouees arrivent avec l'action, elles ne sont pas tirees ici.
+ * Les colonnes arrivent avec l'action, elles ne sont pas tirees ici.
  * C'est ce qui rend le handicap identique chez tous : le tirer localement
  * donnerait des trous differents a chacun, et le tirer avec le generateur du
  * jeu ferait diverger la suite de pieces.
  *
  * @param {GameState} state
- * @param {number[]} holes une colonne trouee par ligne ajoutee
+ * @param {number[]} columns une colonne par bloc a faire tomber
  */
 function addGarbage(state, columns) {
   if (!Array.isArray(columns) || columns.length === 0) return state;
@@ -225,39 +239,62 @@ function addGarbage(state, columns) {
   const grid = state.grid.map((row) => row.slice());
   let toppedOut = false;
 
+  /**
+   * Ligne ou s'arrete un bloc lache dans cette colonne, -1 si elle monte deja
+   * jusqu'au plafond.
+   *
+   * Le bloc tombe du haut : il s'arrete sur la premiere case occupee de sa
+   * colonne, et ne peut donc pas se glisser sous un surplomb. C'est ce qui rend
+   * ce handicap plus genant qu'une ligne poussee par le bas : il coiffe les
+   * puits au lieu de decaler proprement la pile.
+   */
+  function atterrissage(column) {
+    let premiereOccupee = 0;
+    while (premiereOccupee < ROWS && grid[premiereOccupee][column] === null) premiereOccupee++;
+    return premiereOccupee - 1;
+  }
+
+  /** Une rangee a laquelle il ne manque que cette case. */
+  function completerait(column, y) {
+    return grid[y].every((cell, x) => x === column || cell !== null);
+  }
+
   for (const column of columns) {
     if (!Number.isInteger(column) || column < 0 || column >= COLS) continue;
 
-    // Le bloc tombe du haut : il s'arrete sur la premiere case occupee de sa
-    // colonne, et ne peut donc pas se glisser sous un surplomb. C'est ce qui
-    // rend ce handicap plus genant qu'une ligne poussee par le bas : il coiffe
-    // les puits au lieu de decaler proprement la pile.
-    let premiereOccupee = 0;
-    while (premiereOccupee < ROWS && grid[premiereOccupee][column] === null) premiereOccupee++;
-
-    const y = premiereOccupee - 1;
-    if (y < 0) {
-      toppedOut = true; // la colonne monte deja jusqu'au plafond
+    if (atterrissage(column) < 0) {
+      toppedOut = true; // la colonne visee monte deja jusqu'au plafond
       continue;
     }
 
-    grid[y][column] = GARBAGE_COLOR;
+    // Un handicap gene, il ne rend jamais service : un bloc qui completerait
+    // une rangee l'effacerait et allegerait la pile de celui qui le subit. Le
+    // bloc part donc sur la colonne suivante qui l'accepte sans rien completer.
+    let pose = null;
+    for (let i = 0; i < COLS && pose === null; i++) {
+      const candidate = (column + i) % COLS;
+      const y = atterrissage(candidate);
+      if (y >= 0 && !completerait(candidate, y)) pose = { column: candidate, y };
+    }
+
+    // Aucune colonne ne l'accepte : le bloc se perd plutot que d'offrir une
+    // ligne. Le cas demande un plateau ou chaque colonne comble une rangee.
+    if (pose) grid[pose.y][pose.column] = GARBAGE_COLOR;
   }
 
-  // Un bloc peut combler le dernier vide d'une rangee. Une rangee pleine ne
-  // doit jamais subsister : elle disparait, mais sans rien rapporter — ce n'est
-  // pas le joueur qui l'a faite.
-  const { grid: nettoyee } = clearLines(grid);
-
   // La piece en cours peut se retrouver prise dans les blocs qui viennent de
-  // se poser : on la remonte juste ce qu'il faut.
+  // se poser : on la remonte juste ce qu'il faut, mais jamais au-dela du
+  // plafond. Une case sortie par le haut n'est representable nulle part : elle
+  // disparaitrait au verrouillage, et le joueur verrait sa piece s'evaporer.
+  // Si la remontee bute sur le plafond, c'est que la pile a gagne.
+  const plafond = -state.current.cells.findIndex((row) => row.some(Boolean));
   let current = state.current;
-  while (collides(nettoyee, current) && current.y > -current.cells.length) {
+  while (collides(grid, current) && current.y > plafond) {
     current = { ...current, y: current.y - 1 };
   }
 
-  const status = toppedOut || collides(nettoyee, current) ? STATUS.OVER : state.status;
-  return { ...state, grid: nettoyee, current, status };
+  const status = toppedOut || collides(grid, current) ? STATUS.OVER : state.status;
+  return { ...state, grid, current, status };
 }
 
 function move(state, dx) {
