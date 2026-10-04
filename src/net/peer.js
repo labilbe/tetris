@@ -78,6 +78,15 @@ const TYPES_DEMANDE = new Set([CLIENT.JOIN, CLIENT.BEGIN, CLIENT.OVER]);
 const TYPES_DIRECTS = new Set([SERVER.ACTION, SERVER.BOARD]);
 
 /**
+ * Champ d'enveloppe portant le destinataire d'un message nominatif.
+ *
+ * Il n'appartient pas au vocabulaire du jeu — d'ou son absence de protocol.js —
+ * mais a son acheminement : c'est une adresse sur l'enveloppe, pas une phrase de
+ * la lettre. Les deux bouts sont dans ce fichier.
+ */
+const POUR = 'pour';
+
+/**
  * Pose un gestionnaire d'evenement sur un objet de la bibliotheque.
  *
  * `onMessage`, `onPeerJoin` et `onPeerLeave` ne sont pas des enregistreurs mais
@@ -225,9 +234,16 @@ export function createPeerTransport({
    */
   function versPairs(message, to = TOUS) {
     if (!envoyer) return;
-    const brut = encode(message);
-    if (to === TOUS) envoyer(brut);
-    else envoyer(brut, to);
+
+    // Un message nominatif est diffuse a tous, en portant le nom de son
+    // destinataire. L'envoi cible de la bibliotheque s'est revele peu sur, et il
+    // n'avait aucun moyen de le dire : le depart de partie, seul message
+    // nominatif du jeu, n'arrivait jamais chez l'invite, pendant que le salon et
+    // les verdicts — diffuses, eux — circulaient parfaitement.
+    //
+    // Une diffusion que les autres jettent coute une poignee d'octets. Un depart
+    // de partie qui n'arrive pas coute la partie.
+    envoyer(encode(to === TOUS ? message : { ...message, [POUR]: to }));
   }
 
   /**
@@ -512,6 +528,10 @@ export function createPeerTransport({
           if (!message) return;
 
           noterPair(fromId);
+
+          // Message nominatif qui ne nous est pas adresse : il passe devant
+          // nous, on le laisse passer.
+          if (message[POUR] && message[POUR] !== moiId) return;
 
           // Une demande adressee a l'arbitre : elle n'a de sens que chez lui.
           if (TYPES_DEMANDE.has(message.type)) {

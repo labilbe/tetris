@@ -24,7 +24,7 @@ const delai = (ms) => new Promise((r) => { setTimeout(r, ms); });
  * memoire. Les arrivees sont annoncees sur une micro-tache, comme le vrai, pour
  * que les ecouteurs soient en place quand elles tombent.
  */
-function creerMaillage({ sourds = [] } = {}) {
+function creerMaillage({ sourds = [], cibleCassee = false } = {}) {
   /** @type {Map<string, Map<string, object>>} */
   const salons = new Map();
 
@@ -65,6 +65,9 @@ function creerMaillage({ sourds = [] } = {}) {
               onMessage: null,
               send(donnees, options = {}) {
                 const to = options.target;
+                // L'envoi nominatif de la bibliotheque s'est revele peu sur en
+                // vrai : on sait donc le simuler defaillant.
+                if (to && cibleCassee) return Promise.resolve();
                 const cibles = to ? [to] : [...gens.keys()].filter((id) => id !== selfId);
                 for (const cible of cibles) {
                   gens.get(cible)?.actions.get(nom)?.onMessage?.(donnees, selfId);
@@ -250,6 +253,44 @@ describe('depart de la partie', () => {
     assert.equal(ouvB.playerId, 'b');
 
     for (const j of [a, b]) j.transport.close();
+  });
+
+  it('part chez tout le monde meme sans envoi nominatif', async () => {
+    // Le cas observe en vrai : le salon et les verdicts, diffuses, circulaient ;
+    // le depart de partie, seul message nominatif, n'arrivait jamais chez
+    // l'invite. La partie ne demarrait donc que chez l'hote.
+    const maillage = creerMaillage({ cibleCassee: true });
+    const a = joueur(maillage, 'a', { seed: () => 777 });
+    const b = joueur(maillage, 'b');
+    await delai(RESPIRE);
+
+    a.transport.begin();
+    const [ouvA, ouvB] = await Promise.all([a.partie, b.partie]);
+
+    assert.equal(ouvA.seed, 777);
+    assert.equal(ouvB.seed, 777, 'l invite n a pas recu le depart');
+    assert.equal(ouvA.playerId, 'a');
+    assert.equal(ouvB.playerId, 'b');
+
+    for (const j of [a, b]) j.transport.close();
+  });
+
+  it('n applique pas le depart adresse a quelqu un d autre', async () => {
+    // La diffusion fait passer chez chacun des messages qui ne lui sont pas
+    // destines : il doit les laisser passer.
+    const maillage = creerMaillage({ cibleCassee: true });
+    const a = joueur(maillage, 'a');
+    const b = joueur(maillage, 'b');
+    const c = joueur(maillage, 'c');
+    await delai(RESPIRE);
+
+    a.transport.begin();
+    const ouvertures = await Promise.all([a.partie, b.partie, c.partie]);
+
+    // Chacun joue sous son propre nom, pas sous celui du voisin.
+    assert.deepEqual(ouvertures.map((o) => o.playerId), ['a', 'b', 'c']);
+
+    for (const j of [a, b, c]) j.transport.close();
   });
 
   it('refuse de partir a un seul joueur', async () => {
