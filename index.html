@@ -242,11 +242,17 @@
         <span>Pseudo</span>
         <input type="text" id="pseudo" maxlength="16" autocomplete="off" placeholder="Pseudo">
       </label>
+      <!-- Le code du salon est le point de rendez-vous : deux joueurs qui
+           tapent le même code se retrouvent, où qu'ils soient. -->
+      <label class="menu-field">
+        <span>Salon</span>
+        <input type="text" id="salon" maxlength="8" autocomplete="off" placeholder="Code du salon">
+      </label>
       <div class="menu-actions">
         <button type="button" id="play-solo">Partie solo</button>
         <button type="button" id="play-multi">Multijoueur</button>
       </div>
-      <p class="menu-note">Le multijoueur réunit deux joueurs sur la même suite de pièces. Il demande le serveur : <code>npm run server</code>.</p>
+      <p class="menu-note">Le multijoueur réunit les joueurs d’un même salon sur la même suite de pièces. Les navigateurs se parlent en direct : il n’y a aucun serveur, et rien à lancer.</p>
       <p class="menu-error" id="menu-error" hidden></p>
     </div>
 
@@ -254,6 +260,10 @@
       <p id="waiting-text"></p>
       <div class="menu-actions">
         <button type="button" id="waiting-begin" hidden>Lancer la partie</button>
+        <!-- Un adversaire artificiel tourne dans l'onglet de l'hôte : lui seul
+             peut en ajouter, et c'est ce qui rend un salon jouable seul. -->
+        <button type="button" id="waiting-bot" hidden>Ajouter un adversaire</button>
+        <button type="button" id="waiting-copier">Copier le lien</button>
         <button type="button" id="waiting-cancel">Retour au menu</button>
       </div>
     </div>

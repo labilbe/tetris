@@ -55,10 +55,11 @@ export function cleanName(raw, fallback = 'Joueur') {
  * Noms proposes a qui n'en a pas.
  *
  * Des fleuves et des villes de Russie, clin d'oeil a Moscou ou le jeu est ne.
- * Aucun n'est un prenom d'adversaire artificiel (server/bot.js) : dans le
- * multiplex, on doit pouvoir distinguer d'un coup d'oeil un humain d'une IA.
+ * Aucun n'est un prenom d'adversaire artificiel (BOT_NAMES, plus bas) : dans le
+ * multiplex, on doit pouvoir distinguer d un coup d oeil un humain d une IA.
+ * La disjonction des deux listes est verifiee par test/protocol.test.js.
  */
-const NOMS = [
+export const HUMAN_NAMES = [
   'Volga', 'Neva', 'Oural', 'Baikal', 'Angara', 'Ienissei',
   'Amour', 'Irtych', 'Kama', 'Oka', 'Don', 'Ladoga',
   'Onega', 'Taiga', 'Toundra', 'Kazan', 'Omsk', 'Tomsk',
@@ -82,8 +83,8 @@ const NOMS = [
  * @param {() => number} alea source du hasard, injectable pour les tests
  */
 export function randomName(alea = Math.random) {
-  const rang = Math.min(NOMS.length - 1, Math.max(0, Math.floor(alea() * NOMS.length)));
-  return NOMS[rang];
+  const rang = Math.min(HUMAN_NAMES.length - 1, Math.max(0, Math.floor(alea() * HUMAN_NAMES.length)));
+  return HUMAN_NAMES[rang];
 }
 
 /**
@@ -109,4 +110,68 @@ export function decode(raw) {
   } catch {
     return null;
   }
+}
+
+/**
+ * Prenoms des adversaires artificiels.
+ *
+ * Des prenoms plutot que « Bot 1 » : le multiplex nomme celui qu'on regarde, et
+ * un nom se reconnait d'un coup d'oeil la ou un numero se dechiffre.
+ *
+ * Ils sont volontairement disjoints de HUMAN_NAMES, fleuves et villes de Russie :
+ * dans le multiplex, on doit pouvoir distinguer d'un coup d'oeil un humain d'une
+ * IA. Les deux listes vivant desormais dans le meme fichier, un test peut enfin
+ * verifier cette disjonction au lieu de la confier a deux fichiers qui ne se
+ * connaissent pas.
+ */
+export const BOT_NAMES = ['Nina', 'Sacha', 'Vadim', 'Lena', 'Iouri', 'Sveta', 'Boris', 'Katia'];
+
+/**
+ * Un prenom d'adversaire artificiel, tire au sort.
+ *
+ * @param {() => number} alea source du hasard, injectable pour les tests
+ */
+export function randomBotName(alea = Math.random) {
+  const rang = Math.min(BOT_NAMES.length - 1, Math.max(0, Math.floor(alea() * BOT_NAMES.length)));
+  return BOT_NAMES[rang];
+}
+
+/**
+ * Alphabet des codes de salon.
+ *
+ * Ni O ni 0, ni I ni 1 : un code se lit a voix haute et se recopie a la main
+ * depuis l'ecran d'un ami. Les paires ambigues coutent plus cher en salons
+ * manques qu'elles ne rapportent en combinaisons.
+ */
+const ALPHABET_SALON = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+/** Longueurs acceptees pour un code de salon. */
+export const ROOM_MIN = 4;
+export const ROOM_MAX = 8;
+
+/**
+ * Nettoie un code de salon.
+ *
+ * Le code voyage dans une URL et se tape a la main : on ignore la casse, on
+ * jette tout ce qui n'est pas une lettre ou un chiffre — espaces et tirets que
+ * l'on ajoute en recopiant — et on tronque. Renvoie '' si rien d'utilisable ne
+ * reste : c'est a l'appelant de decider d'en tirer un au sort.
+ */
+export function cleanRoom(raw) {
+  if (typeof raw !== 'string') return '';
+  return raw.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, ROOM_MAX);
+}
+
+/**
+ * Un code de salon tire au sort, pour qui arrive sans lien.
+ *
+ * @param {() => number} alea source du hasard, injectable pour les tests
+ */
+export function randomRoom(alea = Math.random) {
+  let code = '';
+  for (let i = 0; i < 5; i += 1) {
+    const rang = Math.min(ALPHABET_SALON.length - 1, Math.max(0, Math.floor(alea() * ALPHABET_SALON.length)));
+    code += ALPHABET_SALON[rang];
+  }
+  return code;
 }

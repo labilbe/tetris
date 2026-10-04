@@ -1,10 +1,16 @@
 # Tetris
 
-Un Tetris jouable dans le navigateur, en HTML/Canvas et JavaScript vanilla. Aucun build, et aucune dépendance côté navigateur — seul le serveur multijoueur en a une, `ws`.
+Un Tetris jouable dans le navigateur, en HTML/Canvas et JavaScript vanilla. Aucun build, **aucune dépendance d'exécution**, et aucun serveur — y compris pour le multijoueur, où les navigateurs se parlent en direct.
 
-Le moteur de jeu est **pur et déterministe** : il n'accède ni au DOM, ni à l'horloge, ni à `Math.random`. C'est ce qui permet de le tester sous Node et, à terme, de faire jouer plusieurs joueurs sur la même partie.
+Le moteur de jeu est **pur et déterministe** : il n'accède ni au DOM, ni à l'horloge, ni à `Math.random`. C'est ce qui permet de le tester sous Node, et de donner à tous les joueurs la même suite de pièces.
 
-## Lancer le jeu
+## Jouer
+
+**En ligne, rien à installer :** <https://labilbe.github.io/tetris/>. Solo et multijoueur y fonctionnent tous les deux.
+
+Pour jouer à plusieurs, partagez le lien du salon — par exemple <https://labilbe.github.io/tetris/?salon=K7M2P>. Qui l'ouvre arrive dans le même salon.
+
+### En local
 
 Le projet utilise des modules ES : il faut le servir en HTTP, un double-clic sur `index.html` ne suffit pas.
 
@@ -12,54 +18,25 @@ Le projet utilise des modules ES : il faut le servir en HTTP, un double-clic sur
 npm start          # sert le dossier sur http://localhost:1984
 ```
 
-### Depuis le réseau local
-
-Le serveur écoute sur toutes les interfaces (`0.0.0.0`), pas seulement sur localhost : les autres machines du réseau peuvent donc ouvrir le jeu directement, sans rien changer au lancement.
-
-Il suffit de remplacer `localhost` par l'adresse de la machine qui sert le jeu, par exemple `http://192.168.66.12:1984`. Pour retrouver cette adresse :
-
-```powershell
-Get-NetIPAddress -AddressFamily IPv4 |
-  Where-Object { $_.PrefixOrigin -eq 'Dhcp' } |
-  Select-Object IPAddress, InterfaceAlias
-```
-
-**Pour jouer ensemble**, lancez aussi le serveur de jeu sur cette même machine :
-
-```bash
-npm run server     # port 1985
-npm start          # port 1984, dans un autre terminal
-```
-
-Chacun ouvre `http://<adresse>:1984` et choisit « Multijoueur ». Le jeu se connecte au serveur sur la machine qui lui a servi la page : rien à configurer chez les invités.
-
-Si la connexion est refusée depuis une autre machine, c'est le pare-feu Windows : ses règles pour Node.js doivent couvrir le profil du réseau utilisé (Domain, Private ou Public). Pour ouvrir explicitement ces deux ports, dans un terminal **administrateur** :
-
-```powershell
-New-NetFirewallRule -DisplayName "Tetris" -Direction Inbound `
-  -Protocol TCP -LocalPort 1984,1985 -Action Allow -Profile Domain,Private
-```
+C'est tout : il n'y a pas de second processus à lancer, pas de port à ouvrir dans le pare-feu, et pas de dépendance à installer. Le multijoueur fonctionne depuis `localhost` comme depuis la version en ligne.
 
 ### Sur téléphone
 
-Deux chemins, selon ce qu'on veut :
-
-- **En ligne** : <https://labilbe.github.io/tetris/> — rien à lancer, mais le solo seulement, faute de serveur en face.
-- **Sur le réseau local** : l'adresse de la machine qui sert la page, par exemple `http://192.168.66.12:1984`. Le multijoueur y fonctionne, le serveur tournant sur cette machine.
-
-Le pavé tactile apparaît automatiquement, et la boîte de jeu se met à l'échelle de l'écran.
+<https://labilbe.github.io/tetris/>, et c'est le même jeu — multijoueur compris. Le pavé tactile apparaît automatiquement, et la boîte de jeu se met à l'échelle de l'écran.
 
 ## Tester
 
 ```bash
-npm test           # tests du moteur, sans navigateur
+npm test           # sans navigateur, et sans rien à installer
 ```
 
-Pour essayer le multijoueur sans être plusieurs, voir [Jouer contre l'IA](#jouer-contre-lia).
+Le réseau y est compris : `test/peer.test.js` monte plusieurs joueurs dans un seul processus Node, sur un faux maillage, et vérifie l'élection de l'hôte, le salon, le handicap et les verdicts — sans WebRTC. Ce qui échappe à ces tests, et qu'il faut donc essayer à la main : la mise en relation réelle, le DOM, et la traversée des pare-feu.
+
+Pour jouer sans être plusieurs, voir [Jouer contre l'IA](#jouer-contre-lia).
 
 ## Menu
 
-Au chargement, un menu propose « Partie solo » et « Multijoueur ». Le multijoueur demande le serveur (`npm run server`) ; sans lui, le menu affiche l'échec de connexion et reste utilisable en solo.
+Au chargement, un menu propose « Partie solo » et « Multijoueur », avec deux champs : le **pseudo** et le **code du salon**, tous deux pré-remplis et retenus d'une visite à l'autre.
 
 Ce menu joue un second rôle : le clic qui lance la partie est aussi le geste que les navigateurs exigent avant d'autoriser le son. La musique démarre donc avec la partie, sans rien demander de plus au joueur.
 
@@ -111,22 +88,28 @@ src/
     midi.js       lecteur de fichier MIDI, sans dépendance
     music.js      synthèse Web Audio, calée sur l'état du jeu
   net/
-    protocol.js   vocabulaire réseau, partagé avec le serveur
-    transport.js  achemine les actions (local, ou WebSocket)
+    protocol.js   vocabulaire réseau, partagé entre pairs
+    transport.js  le contrat d'acheminement des actions, et le mode solo
+    peer.js       le pair-à-pair : la seule frontière avec WebRTC
+    host.js       l'arbitre : salon, graine, verdict (fonctions pures)
+    rooms.js      salons : qui attend qui, avec quelle graine (fonctions pures)
+    bots.js       adversaires artificiels : le pilote, dans la page
     snapshot.js   instantané de plateau : ce que les autres voient de notre partie
     garbage.js    tirage des colonnes de handicap, côté émetteur
   view/
-    preferences.js réglages locaux (projection, musique, pseudo)
+    preferences.js réglages locaux (projection, musique, pseudo, salon)
     camera.js     qui regarde-t-on dans le multiplex, et jusqu'à quand
   main.js       câblage : DOM + horloge + boucle de jeu
-server/
-  rooms.js      salons : qui attend qui, avec quelle graine (fonctions pures)
-  index.js      le réseau, et rien d'autre
-  bot.js        adversaires artificiels : de vrais clients, pour essayer seul
+vendor/
+  trystero-nostr.js  la mise en relation WebRTC, copiée telle quelle (voir plus bas)
 test/
   engine.test.js    tests du moteur
   midi.test.js      tests du lecteur MIDI
+  protocol.test.js  codes de salon et pseudos
   rooms.test.js     tests des salons
+  host.test.js      tests de l'arbitre et de son élection
+  peer.test.js      tests du transport, sur un faux maillage
+  bots.test.js      tests du pilote des adversaires artificiels
   multiplex.test.js instantané de plateau et caméra
   ai.test.js        décision de l'IA et tirage du handicap
 ```
@@ -139,12 +122,25 @@ Trois règles tiennent l'ensemble :
 
 ## Multijoueur
 
-```bash
-npm run server     # serveur de jeu sur le port 1985
-npm start          # dans un autre terminal, la page sur le port 1984
-```
+Chaque joueur ouvre la page, vérifie le **code du salon** et choisit « Multijoueur ». Deux joueurs qui tapent le même code se retrouvent, où qu'ils soient. Le plus simple reste de partager le lien : il porte le code (`?salon=K7M2P`), et l'écran d'attente offre un bouton pour le copier.
 
-Chaque joueur ouvre la page et choisit « Multijoueur ». Le salon accueille **autant de joueurs que voulu** ; il en faut simplement deux pour jouer.
+Le salon accueille **autant de joueurs que voulu** ; il en faut simplement deux pour jouer.
+
+### Il n'y a pas de serveur
+
+Les navigateurs se parlent **directement**, en WebRTC. Aucune machine n'héberge la partie : ni la vôtre, ni GitHub, qui ne sert que des fichiers.
+
+Reste qu'il faut bien se trouver. C'est le rôle de la **signalisation** : le temps d'un échange d'adresses, les deux navigateurs passent par le réseau public [Nostr](https://nostr.com/) — une vingtaine de relais, donc aucun point de panne unique — qui leur sert de tableau de rendez-vous. Une fois la connexion établie, plus rien n'y transite : le jeu va d'un navigateur à l'autre.
+
+**Un joueur sur dix environ n'y arrivera pas.** Certains réseaux (NAT symétrique, 4G d'entreprise) refusent toute connexion directe. Les contourner demanderait un serveur relais — un TURN — qu'il faudrait héberger et payer, c'est-à-dire exactement ce dont on vient de se passer. Le jeu le dit alors franchement plutôt que d'afficher une attente muette, et le contournement est simple : essayer depuis un autre réseau, ou depuis le même Wi-Fi que son adversaire.
+
+### L'hôte
+
+L'un des joueurs **arbitre** : il tient la composition du salon, tire la graine, et désigne le vainqueur. C'est le seul rôle qui demande qu'une machine tranche.
+
+Il est choisi sans négociation : **le plus petit identifiant** parmi les présents. Chacun calcule la règle chez soi, tous voient le même ensemble de pairs, et tous tombent donc d'accord sans échanger un message. Si un joueur au plus petit identifiant arrive avant le lancement, l'hôte en place lui cède la main — le salon n'a alors rien à perdre, sauf la graine, qui est arbitraire.
+
+**Si l'hôte quitte en cours de partie, la partie s'arrête**, et le jeu le dit. Lui transférer l'arbitrage en pleine partie coûterait plus que cela ne rapporte : ce qu'il détient — le décompte des éliminations — est précisément ce dont la perte change le verdict.
 
 Dès le second joueur, un bouton « Lancer la partie » apparaît. **Rien ne démarre tout seul** : ce sont les présents qui décident du moment, sans quoi un arrivant de plus lancerait la partie à leur place. Une fois lancée, le salon n'accepte plus personne — un retardataire manquerait le début et jouerait une autre partie.
 
@@ -154,30 +150,34 @@ Fermer plutôt que rouvrir évite au passage un piège : un joueur encore devant
 
 ### Ce qui circule sur le réseau
 
-**La partie ne circule pas : une graine, puis des actions.** Le moteur étant déterministe, la même graine suivie de la même suite d'actions produit le même jeu partout. Le serveur n'a donc aucune règle de Tetris à connaître ; il réunit les joueurs, impose la graine et donne un ordre unique aux actions.
+**Presque rien, et c'est le point le plus important du multijoueur.**
 
-Un second canal, `board`, transporte des **instantanés de plateau** — mais uniquement pour regarder les autres jouer (voir [Le multiplex](#le-multiplex--regarder-les-autres-jouer)). Il ne décide de rien : le perdre ou le fausser ne change aucune partie, et le serveur le relaie sans le lire. C'est ce qui l'autorise à côtoyer le canal d'actions sans le contaminer.
+Chaque joueur ne joue que son propre plateau. Personne ne simule celui d'un autre : les plateaux adverses n'arrivent que sous forme d'images toutes faites, cinq fois par seconde, pour le multiplex. La graine commune ne sert donc qu'à donner à tous la **même suite de pièces** — c'est du confort, pas de la correction.
+
+Il n'y a par conséquent **rien à synchroniser, et aucun ordre à imposer**. Ce qui circule se réduit à :
 
 ```
-client  -> serveur : { type: 'join', room, name }
-client  -> serveur : { type: 'begin' }
-client  -> serveur : { type: 'action', action }
-client  -> serveur : { type: 'over' }
-client  -> serveur : { type: 'board', board }          (affichage seul)
-serveur -> client  : { type: 'waiting', players, min, names }
-serveur -> client  : { type: 'start', seed, playerId, players, names }
-serveur -> client  : { type: 'action', playerId, action }
-serveur -> client  : { type: 'board', playerId, board }  (affichage seul)
-serveur -> client  : { type: 'eliminated', playerId, remaining }
-serveur -> client  : { type: 'finished', winner }
-serveur -> client  : { type: 'left', playerId }
+pair -> hôte  : { type: 'join', room, name }
+pair -> hôte  : { type: 'begin' }
+pair -> hôte  : { type: 'over' }
+hôte -> pair  : { type: 'waiting', room, players, min, names }
+hôte -> pair  : { type: 'start', seed, playerId, players, names }
+hôte -> pair  : { type: 'eliminated', playerId, remaining }
+hôte -> pair  : { type: 'finished', winner }
+hôte -> pair  : { type: 'left', playerId }
+hôte -> pair  : { type: 'error', message }
+
+pair -> pairs : { type: 'action', playerId, action }    le handicap, en direct
+pair -> pairs : { type: 'board', playerId, board }      affichage seul, en direct
 ```
 
-Le vocabulaire est défini une seule fois, dans `src/net/protocol.js`, importé par le client comme par le serveur : les deux côtés ne peuvent pas diverger.
+Les deux dernières lignes ne passent pas par l'hôte : le handicap n'a besoin d'aucun arbitrage — ses colonnes sont tirées chez l'émetteur — et un instantané perdu ne change la partie de personne. Les router par l'hôte doublerait la latence et ferait de lui une panne de plus.
 
-Une action n'est **pas** appliquée au moment de la frappe : elle part au serveur et n'agit qu'à son retour. C'est le choix le plus simple, au prix d'un aller-retour. La prédiction locale (appliquer tout de suite, puis rejouer depuis le dernier état confirmé) se greffera dans le transport, et nulle part ailleurs.
+Le vocabulaire est défini une seule fois, dans `src/net/protocol.js` : les deux côtés ne peuvent pas diverger.
 
-Les actions de l'adversaire arrivent par le même canal que les siennes et sont distinguées par `playerId`.
+**Une touche s'applique immédiatement**, en réseau comme en solo. Du temps où tout passait par un serveur, elle partait et n'agissait qu'à son retour — un aller-retour par touche, pour garantir un ordre dont on vient de voir qu'il ne servait à rien. Le pair-à-pair n'est donc pas un pis-aller : il est plus rapide que ne l'était le réseau local, et la « prédiction locale » qu'on envisageait de greffer un jour n'a plus d'objet.
+
+Un piège, pour qui touchera à ce code : `CLIENT` et `SERVER` partagent deux noms, `action` et `board`. Sur un socket la direction allait de soi — ce qui montait venait d'un client, ce qui descendait du serveur. Dans un maillage il n'y a plus de haut ni de bas, et prendre un `action` reçu pour une demande le fait rediffuser sans fin. Seuls `join`, `begin` et `over`, qui n'ont pas d'homonyme, sont donc reconnus comme des demandes.
 
 ### Blocs de handicap
 
@@ -215,62 +215,21 @@ Le panneau affiche le nombre de joueurs encore en jeu. Une fois la partie termin
 
 Chaque joueur choisit un **pseudo** au menu, retenu d'une partie à l'autre. Sans lui, « le joueur en difficulté » ne désignerait qu'un identifiant que personne ne reconnaît. Deux homonymes sont numérotés (`Franck`, `Franck 2`).
 
-**Le champ arrive pré-rempli avec le nom Windows de la machine.** Sur un poste nommé `POSTE-12`, le menu propose `POSTE-12` avant qu'on ait rien tapé — un pseudo déjà saisi n'est jamais remplacé, et reste mémorisé d'une partie à l'autre.
+**Le champ arrive pré-rempli avec un nom tiré au sort** : un fleuve ou une ville de Russie (`Volga`, `Baikal`, `Souzdal`…), autre clin d'œil à Moscou. Aucun n'est un prénom d'adversaire artificiel, pour qu'un humain ne se confonde pas avec une IA dans le multiplex — et comme les deux listes vivent désormais dans le même fichier, un test vérifie qu'elles ne se croisent jamais.
 
-Ce nom vient du **serveur**, pas de la page. Un navigateur ne peut pas lire le nom de sa machine : aucune API ne l'expose, et c'est voulu — ce serait un identifiant stable de plus à offrir au premier site visité. Le serveur, lui, tourne sur la machine et connaît son nom (`os.hostname()`, suffixe de domaine retiré). Il l'expose à côté du WebSocket, sur le même port :
+Un nom quelconque vaut mieux qu'un champ vide : sans lui, tous les joueurs s'appelleraient `Joueur`, numérotés les uns derrière les autres, et la caméra annoncerait « Joueur 3 » sans que personne ne se reconnaisse.
 
-```
-GET http://<hôte>:1985/nom   ->   {"name":"POSTE-12"}
-```
+Le champ proposait autrefois le **nom Windows de la machine**, demandé au serveur de jeu — un navigateur ne pouvant pas le lire lui-même, aucune API ne l'exposant, et c'est voulu : ce serait un identifiant stable de plus à offrir au premier site visité. Sans serveur, plus personne ne le connaît. La perte est mince : la page étant servie depuis Internet, la quasi-totalité des joueurs n'y avaient de toute façon pas droit.
 
-Deux garde-fous, qui expliquent la forme de cette réponse :
+#### Ce qui est mémorisé
 
-- **Elle n'est donnée qu'à un joueur de cette machine**, reconnu à son adresse de bouclage ; sinon `{"name":""}`. Le nom de l'hôte n'est pas celui d'un invité du réseau local : le lui proposer ferait jouer tout le monde sous le même nom, numéroté derrière l'hôte.
-- **L'en-tête CORS n'est émis que pour une page de la même machine** (origine et hôte de même nom, le port différant puisque la page est servie à côté). Sans cela, n'importe quel site visité pourrait demander ce nom à la machine de son visiteur — ce que le navigateur a précisément raison de lui refuser.
+Le pseudo est enregistré **dès qu'il change**, et non au lancement d'une partie en réseau : on le corrige, puis on joue en solo ou on ferme l'onglet, il est là à la visite suivante. Un pseudo déjà retenu l'emporte toujours sur un tirage au sort : le hasard ne reprend jamais la main sur un choix fait.
 
-Le serveur annonce le nom retenu au démarrage :
-
-```
-Serveur de jeu en ecoute sur le port 1985 (2 joueurs minimum, sans maximum)
-Pseudo par defaut sur cette machine : POSTE-12
-```
-
-Si le serveur de jeu n'est pas lancé, la requête échoue sans bruit : on n'empêche personne de jouer en solo faute d'avoir trouvé un nom.
-
-#### Les invités du réseau prennent un nom tiré au sort
-
-**Le nom d'une machine distante n'est pas connaissable depuis le serveur.** Ce n'est pas faute d'avoir cherché : toutes les voies ont été mesurées, d'un poste vers un autre du même réseau.
-
-| Méthode | Résultat |
-| --- | --- |
-| DNS inverse (`dns.reverse`, PTR) | `ENOTFOUND` |
-| Résolveur du système (`getnameinfo`) | `ENOTFOUND` après 4,9 s |
-| PTR demandé au DNS du réseau | « DNS name does not exist » |
-| NetBIOS (`nbtstat -A`) | « Host not found » |
-| mDNS inverse (224.0.0.251) | aucune réponse |
-| LLMNR inverse (224.0.0.252) | aucune réponse |
-
-Un réseau peut très bien résoudre les noms **dans le sens direct** sans savoir faire l'inverse : c'est le cas ici, la zone directe existe et la zone inverse non. Et deviner coûterait cher — sur une machine où Docker est installé, le fichier `hosts` fait répondre `kubernetes.docker.internal` pour `127.0.0.1`. Un faux nom vaut moins que pas de nom.
-
-Faute de machine identifiable, la page **tire alors un pseudo au sort** : un fleuve ou une ville de Russie (`Volga`, `Baikal`, `Souzdal`…), autre clin d'œil à Moscou. Aucun n'est un prénom d'adversaire artificiel, pour qu'un humain ne se confonde pas avec une IA dans le multiplex.
-
-Un nom quelconque vaut mieux qu'un champ vide : sans lui, tous les invités s'appelleraient `Joueur`, numérotés les uns derrière les autres, et la caméra annoncerait « Joueur 3 » sans que personne ne se reconnaisse.
-
-#### Ce qui est mémorisé, et ce qui ne l'est pas
-
-Le pseudo est enregistré **dès qu'il change**, et non au lancement d'une partie en réseau : on le corrige, puis on joue en solo ou on ferme l'onglet, il est là à la visite suivante.
-
-| Origine du pseudo | Mémorisé ? |
-| --- | --- |
-| Saisi par le joueur | oui, à la frappe |
-| Tiré au sort | oui, aussitôt — sinon le joueur changerait d'identité à chaque rechargement |
-| Nom de la machine | **non** — il est redemandé à chaque visite, et suit donc un renommage |
-
-Un pseudo déjà retenu l'emporte toujours sur les deux autres : ni la machine ni le hasard ne reprennent la main sur un choix fait.
+Le **code du salon** suit la même règle, avec une priorité de plus : un code reçu dans un lien l'emporte sur le dernier salon joué. Qui ouvre l'invitation d'un ami doit atterrir chez lui, pas dans son propre salon de la veille.
 
 Une vignette à gauche du plateau montre **un adversaire à la fois**, et non tous : à un salon sans maximum, une grille de plateaux ne tiendrait ni à l'écran ni au regard. C'est la caméra qui choisit.
 
-**Comment le plateau d'un autre arrive jusqu'à nous.** Chacun émet un instantané de son propre plateau cinq fois par seconde, que le serveur relaie tel quel — un bloc opaque qu'il ne lit pas. C'est un **second canal, purement décoratif** (`board`), à côté du canal d'actions qui, lui, reste seul maître de la partie : un instantané perdu, tardif ou incohérent ne change le jeu de personne, il fait au pire sauter une vignette.
+**Comment le plateau d'un autre arrive jusqu'à nous.** Chacun émet un instantané de son propre plateau cinq fois par seconde, directement à ses pairs. C'est un **canal purement décoratif** (`board`) : un instantané perdu, tardif ou incohérent ne change le jeu de personne, il fait au pire sauter une vignette. Seuls les instantanés des adversaires artificiels passent par l'hôte, et il le faut bien — un bot n'a pas de connexion à lui.
 
 C'est ce qui écarte la difficulté qui avait fait renoncer à cette fonctionnalité : rejouer la partie d'un adversaire à partir de ses actions supposerait de dater celles-ci, sa gravité avançant sur *son* horloge. Une image toute faite n'a pas d'horloge. Le format est du texte — une lettre par case, vingt chaînes de dix caractères — lisible dans un journal réseau et assez léger pour partir sans cérémonie.
 
@@ -287,41 +246,41 @@ La colonne du multiplex est **réservée même en solo**, où elle est simplemen
 
 ### Jouer contre l'IA
 
-Le multijoueur se teste mal à un joueur : il faut être deux pour lancer une partie, et le multiplex n'a rien à montrer tant que personne d'autre ne joue. D'où des adversaires artificiels.
+Le multijoueur se joue mal à un joueur : il en faut deux pour lancer une partie, et le multiplex n'a rien à montrer tant que personne d'autre ne joue. En ligne, où l'on arrive souvent seul, un salon vide ne servirait à rien. D'où des adversaires artificiels, **dans l'écran d'attente** : un bouton « Ajouter un adversaire », jusqu'à cinq.
 
-```bash
-npm run server     # dans un terminal
-npm run bots       # dans un autre : trois adversaires
-npm start          # dans un troisième : la page
-```
+Ils n'existent que chez l'**hôte** — c'est son onglet qui les fait jouer — et lui seul voit donc ce bouton. Les autres joueurs ne font aucune différence : un bot entre dans le salon, joue, pénalise ses voisins et se fait éliminer comme n'importe qui.
 
-Ils entrent dans le salon et **attendent que vous lanciez la partie** — comme des invités, et pour la même raison : rien ne démarre à la place des présents. Après chaque partie ils reviennent d'eux-mêmes dans le salon, si bien qu'on les lance une fois pour la soirée.
+**Ils parlent exactement le langage d'un joueur.** Ils dérivent leur plateau de la graine commune, n'agissent que par les actions d'un joueur au clavier, et émettent leurs instantanés au même rythme qu'un navigateur. L'arbitre ne les distingue pas d'une page ouverte, et c'est tout l'intérêt : ce qu'on exerce ainsi, c'est la vraie chaîne — salon, handicap, multiplex, éliminations — et non une maquette à côté du jeu.
 
-| Option | Effet |
-| --- | --- |
-| `5` (un nombre nu) | cinq adversaires plutôt que trois |
-| `--adresse <0..1>` | probabilité de bien jouer (défaut `0.9`) |
-| `--delai <ms>` | millisecondes entre deux actions (défaut `80`) |
-| `--lancer` | lancer la partie sans attendre de joueur humain |
-| `--salon`, `--hote`, `--port` | rejoindre un autre salon, ou un serveur distant |
-| `--aide` | le détail |
+Ils vivent sur **la même image que le jeu** : pas de minuterie à eux, pas de second rythme. `src/net/bots.js` reçoit le temps en paramètre depuis la boucle de rendu, exactement comme le moteur. Si l'onglet passe en arrière-plan, ils gèlent avec la partie — ce qui est le comportement souhaitable. C'est aussi ce qui rend leur partie reproductible, donc testable sans attendre (`test/bots.test.js`).
 
-Par exemple `npm run bots -- 5 --adresse 0.8`.
+Le plafond de cinq n'est pas arbitraire : ils tournent dans l'onglet de l'hôte, et au-delà c'est sa propre partie qui saccade.
 
-**Ce sont de vrais clients.** Ils ouvrent une connexion WebSocket, dérivent leur plateau de la graine commune, n'agissent que par les actions d'un joueur au clavier et émettent leurs instantanés au même rythme qu'un navigateur. Le serveur ne les distingue pas d'une page ouverte, et c'est tout l'intérêt : ce qu'on exerce ainsi, c'est la vraie chaîne — salon, ordre des actions, handicap, multiplex, éliminations — et non une maquette à côté du jeu.
+Deux réglages vivent dans le code plutôt que dans l'interface, `adresse` (probabilité de bien jouer, défaut `0.9`) et `delai` (millisecondes entre deux actions, défaut `80`).
 
 **L'IA ne voit que son propre plateau**, et aucun état qu'un joueur n'aurait pas. Elle juge chaque pose possible de la pièce en cours sur quatre mesures — hauteur de pile, cases couvertes, dénivelé, lignes effacées — et garde la meilleure. Les cases couvertes pèsent lourd : c'est le seul dégât qu'on ne répare pas en jouant bien, une case coiffée le restant jusqu'à ce que sa rangée s'efface.
 
 **`--adresse` sert aux essais, pas à la difficulté.** À `1` l'IA ne perd jamais : sa pile ne monte pas, donc la caméra ne se porte jamais sur un joueur en difficulté, personne n'est éliminé et aucune partie ne se termine — on ne verrait précisément rien de ce qu'on voulait voir. En dessous, elle se trompe pour de bon : un placement au hasard de temps en temps, avec les trous que cela creuse. À `0.9`, une partie à trois dure une minute et finit par désigner un vainqueur ; à `0.8`, elle est nettement plus courte.
 
-La décision vit dans `src/ai/player.js` : des fonctions pures sur un état de jeu, sans horloge ni réseau, comme le moteur et la caméra. `server/bot.js` ne garde que le temps et la connexion. C'est ce partage qui rend la politique de jeu testable coup par coup (`test/ai.test.js`), ce qu'aucune partie observée ne prouverait — une IA qui joue mal étant très difficile à distinguer d'une IA malchanceuse.
+La décision vit dans `src/ai/player.js` : des fonctions pures sur un état de jeu, sans horloge ni réseau, comme le moteur et la caméra. `src/net/bots.js` ne garde que le temps. C'est ce partage qui rend la politique de jeu testable coup par coup (`test/ai.test.js`), ce qu'aucune partie observée ne prouverait — une IA qui joue mal étant très difficile à distinguer d'une IA malchanceuse. Ce découpage a d'ailleurs survécu intact au passage du serveur au navigateur : seul le pilote a été réécrit.
 
 Une dernière chose que l'IA ne sait pas faire : **viser une colonne sous un surplomb**. Y glisser une pièce demanderait de simuler les rotations avec leurs décalages, et le handicap en crée justement. Le pilote tranche plus simplement — s'il pousse deux fois sans que rien ne bouge, il lâche la pièce là où elle est. Une pièce mal posée de loin en loin est un défaut d'IA, pas un blocage.
 
+### La seule dépendance, et elle est copiée
+
+`vendor/trystero-nostr.js` est [Trystero](https://github.com/dmotz/trystero) (`@trystero-p2p/nostr`), qui établit les connexions WebRTC. 62 Ko, un seul fichier, aucun import à résoudre : il s'utilise tel quel dans un `<script type="module">`, ce qui laisse le projet **sans étape de construction**.
+
+Il est copié dans le dépôt plutôt que chargé depuis un CDN, et c'est délibéré : GitHub Pages le sert lui-même, donc aucun tiers dans le chemin critique du chargement ; un dépôt cloné fonctionne hors ligne ; le fichier est lisible et comparable d'une version à l'autre ; et la version ne peut pas changer sous nos pieds. Le prix est une mise à jour manuelle — l'en-tête du fichier porte la version, l'URL d'origine et la commande pour le rafraîchir.
+
+Sa surface est confinée à `src/net/peer.js`, qui ne l'importe même pas : `joinRoom` et `selfId` lui sont **injectés** par `main.js`. C'est ce qui permet de tester tout le réseau sous Node, sur un faux maillage de quarante lignes, sans navigateur ni WebRTC.
+
+Attention en cas de rafraîchissement : l'API de la 0.25 diffère de ce que documente le README d'amont. `makeAction` renvoie un objet et non un couple, `onMessage` / `onPeerJoin` / `onPeerLeave` s'**assignent** au lieu de s'appeler, et `send` prend `{ target }` et non l'identifiant du pair — cette dernière erreur ne lève rien, le message part simplement à tout le monde. Les trois sont absorbées au même endroit, en tête de `src/net/peer.js`.
+
 ### Ce qui reste à faire
 
-- **Choisir son salon** : le code de salon existe dans le protocole, l'interface n'en propose pas encore.
-- **Reconnexion** : aujourd'hui, un joueur qui part met fin à la partie.
+- **Migration de l'hôte** : s'il quitte en cours de partie, la partie s'arrête. Assumé, faute d'un moyen honnête de transférer le décompte des éliminations.
+- **Relais TURN** : rien n'est prévu pour les réseaux qui refusent la connexion directe. Il faudrait héberger un relais, c'est-à-dire renoncer à ce qui fait l'intérêt de l'approche.
+- **Reconnexion** : un joueur qui part est éliminé, et ne peut pas revenir.
 - **La pause est locale** : elle arrête son propre plateau sans arrêter celui de l'adversaire. À deux, c'est un avantage indu — il faudra soit la mettre en commun, soit l'interdire en réseau.
 
 ## Musique

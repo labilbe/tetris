@@ -3,11 +3,14 @@
  * en jeu.
  *
  * Volontairement sans socket ni horloge : ce sont des fonctions pures sur un
- * etat simple, donc testables directement, comme le moteur du jeu. Le fichier
- * server/index.js se charge du reseau et n'a plus de logique a lui.
+ * etat simple, donc testables directement, comme le moteur du jeu. C'est
+ * net/peer.js qui se charge du reseau, et il n'a plus de logique a lui.
+ *
+ * L'arbitre est desormais un navigateur — celui de l'hote — et non un serveur :
+ * ce fichier n'en sait rien, et c'est la preuve qu'il etait deja au bon endroit.
  */
 
-import { MIN_PLAYERS, cleanName } from '../src/net/protocol.js';
+import { MIN_PLAYERS, cleanName } from './protocol.js';
 
 /**
  * @typedef {{

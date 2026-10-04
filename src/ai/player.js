@@ -3,7 +3,7 @@
  *
  * Fonctions pures sur un etat de jeu, comme le moteur et la camera : pas
  * d'horloge, pas de reseau, et pas d'autre hasard que celui qu'on lui passe.
- * C'est le pilote (server/bot.js) qui tient le temps et la connexion ; ici on ne
+ * C'est le pilote (net/bots.js) qui tient le temps et la connexion ; ici on ne
  * fait que juger des plateaux, ce qui rend la politique de jeu testable coup par
  * coup.
  *

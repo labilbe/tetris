@@ -6,7 +6,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { alive, begin, closeRoom, createLobby, eliminate, join, leave, roomOf, waitingStatus } from '../server/rooms.js';
+import { alive, begin, closeRoom, createLobby, eliminate, join, leave, roomOf, waitingStatus } from '../src/net/rooms.js';
 
 const SEED = 4242;
 

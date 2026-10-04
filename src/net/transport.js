@@ -1,31 +1,48 @@
 /**
  * Transport des actions.
  *
- * Le jeu ne dispatche jamais une action directement dans le moteur : il la
- * passe au transport, qui la restitue via onAction. En solo l'aller-retour est
- * immediat ; en reseau il passe par le serveur, qui devient l'arbitre de
- * l'ordre des actions et de la graine.
+ * Le jeu ne dispatche jamais une action directement dans le moteur : il la passe
+ * au transport, qui la restitue via onAction. Le mode de jeu choisit
+ * l'implementation, et rien d'autre dans le jeu ne sait comment les messages
+ * voyagent — c'est ce qui a permis de remplacer un serveur WebSocket par du
+ * pair-a-pair sans toucher au reste.
  *
  * Contrat commun :
  *   start()            -> Promise<{ seed, playerId }>
  *   send(action)       -> void                 emet une action locale
  *   sendBoard(board)   -> void                 emet un instantane de plateau
+ *   begin()            -> void                 lancer sans attendre le salon plein
+ *   reportGameOver()   -> void                 signaler sa propre defaite
  *   onAction(listener) -> () => void           listener(action, { playerId, self })
  *   onStatus(listener) -> () => void           attente, depart, erreur
  *   onBoard(listener)  -> () => void           listener(playerId, board)
  *   close()            -> void
  *
- * Le meta `self` est essentiel en reseau : les actions de l'adversaire arrivent
- * par le meme canal que les siennes, et ne doivent pas piloter son propre
- * plateau.
+ * Extension facultative :
+ *   tick(nowMs)        -> void                 appelee depuis la boucle de rendu
+ *
+ * Elle n'existe que pour les adversaires artificiels, qui vivent dans la page de
+ * l'hote et ont besoin d'une horloge. Un transport qui n'en a pas l'omet, et
+ * l'appelant l'invoque avec `transport.tick?.(time)`.
+ *
+ * Le meta `self` est essentiel en reseau : les actions des autres arrivent par le
+ * meme canal que les siennes, et ne doivent pas piloter son propre plateau.
+ *
+ * Il n'y a rien a reconcilier
+ * ---------------------------
+ * Chaque joueur ne reduit que ses propres actions ; les plateaux adverses ne sont
+ * jamais simules, ils arrivent par le canal decoratif des instantanes. Aucune
+ * divergence n'est donc possible, et aucun arbitre n'a besoin d'ordonner quoi que
+ * ce soit. Les actions s'appliquent sur-le-champ, en reseau comme en solo : la
+ * prediction locale que ce fichier annonçait, du temps ou tout passait par un
+ * serveur, n'a plus d'objet.
  */
 
 import { randomSeed } from '../engine/rng.js';
-import { CLIENT, DEFAULT_ROOM, SERVER, decode, encode } from './protocol.js';
 
 const LOCAL_PLAYER = 'local';
 
-/** Solo : les actions reviennent telles quelles, sans latence ni serveur. */
+/** Solo : les actions reviennent telles quelles, sans latence ni reseau. */
 export function createLocalTransport(seed = randomSeed()) {
   const listeners = new Set();
 
@@ -57,191 +74,6 @@ export function createLocalTransport(seed = randomSeed()) {
     },
     close() {
       listeners.clear();
-    },
-  };
-}
-
-/**
- * Multijoueur : le serveur impose la graine et l'ordre des actions.
- *
- * Aucune action n'est appliquee localement avant son echo par le serveur. C'est
- * le choix le plus simple, au prix d'un aller-retour ; la prediction locale
- * (appliquer tout de suite, puis rejouer depuis le dernier etat confirme en cas
- * de divergence) se greffera ici, et nulle part ailleurs, parce que le moteur
- * est deterministe.
- */
-/**
- * Delai au-dela duquel on renonce a joindre le serveur.
- *
- * Il ne couvre que l'ouverture de la connexion, jamais l'attente des autres
- * joueurs, qui est legitime et peut durer. Sans lui, une adresse injoignable ne
- * produit aucune erreur : le navigateur attend l'expiration TCP, et le joueur
- * reste devant « Connexion au serveur… » sans explication.
- */
-const CONNECT_TIMEOUT_MS = 8000;
-
-export function createWebSocketTransport(url, { room = DEFAULT_ROOM, name = '' } = {}) {
-  const actionListeners = new Set();
-  const statusListeners = new Set();
-  const boardListeners = new Set();
-
-  /** @type {WebSocket | null} */
-  let socket = null;
-  let playerId = null;
-
-  function notifyStatus(status) {
-    for (const listener of statusListeners) listener(status);
-  }
-
-  return {
-    start() {
-      return new Promise((resolve, reject) => {
-        socket = new WebSocket(url);
-
-        // Arme seulement jusqu'a l'ouverture : une fois connecte, l'attente des
-        // autres joueurs n'a pas de limite.
-        const timeout = setTimeout(() => {
-          const error = new Error(
-            `Aucun serveur de jeu joignable sur ${url}. Le multijoueur demande `
-            + 'un serveur lancé avec « npm run server », sur la machine qui sert la page.',
-          );
-          notifyStatus({ kind: 'error', message: error.message });
-          socket.close();
-          reject(error);
-        }, CONNECT_TIMEOUT_MS);
-
-        socket.addEventListener('open', () => {
-          clearTimeout(timeout);
-          socket.send(encode({ type: CLIENT.JOIN, room, name }));
-        });
-
-        socket.addEventListener('message', (event) => {
-          const message = decode(event.data);
-          if (!message) return;
-
-          switch (message.type) {
-            case SERVER.START:
-              playerId = message.playerId;
-              notifyStatus({
-                kind: 'start',
-                room: message.room,
-                players: message.players,
-                names: message.names ?? {},
-              });
-              resolve({ seed: message.seed, playerId });
-              break;
-            case SERVER.WAITING:
-              notifyStatus({
-                kind: 'waiting',
-                room: message.room,
-                players: message.players,
-                min: message.min,
-                names: message.names ?? [],
-              });
-              break;
-            case SERVER.BOARD:
-              // Purement decoratif : aucun ecouteur d'action n'en entend parler.
-              for (const listener of boardListeners) listener(message.playerId, message.board);
-              break;
-            case SERVER.ACTION:
-              for (const listener of actionListeners) {
-                listener(message.action, { playerId: message.playerId, self: message.playerId === playerId });
-              }
-              break;
-            case SERVER.ELIMINATED:
-              notifyStatus({
-                kind: 'eliminated',
-                playerId: message.playerId,
-                self: message.playerId === playerId,
-                remaining: message.remaining,
-              });
-              break;
-            case SERVER.FINISHED:
-              notifyStatus({ kind: 'finished', winner: message.winner, self: message.winner === playerId });
-              break;
-            case SERVER.LEFT:
-              notifyStatus({ kind: 'left', playerId: message.playerId });
-              break;
-            case SERVER.ERROR:
-              notifyStatus({ kind: 'error', message: message.message });
-              reject(new Error(message.message));
-              break;
-            default:
-              break;
-          }
-        });
-
-        socket.addEventListener('error', () => {
-          clearTimeout(timeout);
-          const error = new Error(
-            `Aucun serveur de jeu joignable sur ${url}. Le multijoueur demande `
-            + 'un serveur lancé avec « npm run server », sur la machine qui sert la page.',
-          );
-          notifyStatus({ kind: 'error', message: error.message });
-          reject(error);
-        });
-
-        socket.addEventListener('close', () => {
-          clearTimeout(timeout);
-          notifyStatus({ kind: 'closed' });
-          // Si la partie n'avait pas commence, personne n'attend plus rien.
-          reject(new Error('Connexion fermee avant le debut de la partie'));
-        });
-      });
-    },
-
-    send(action) {
-      if (socket && socket.readyState === WebSocket.OPEN) {
-        socket.send(encode({ type: CLIENT.ACTION, action }));
-      }
-    },
-
-    /**
-     * Emet un instantane de son plateau pour ceux qui regardent.
-     *
-     * Rien ne garantit ni ne verifie son arrivee : c'est de l'affichage, il
-     * part comme il peut et le suivant corrigera.
-     */
-    sendBoard(board) {
-      if (socket && socket.readyState === WebSocket.OPEN) {
-        socket.send(encode({ type: CLIENT.BOARD, board }));
-      }
-    },
-
-    onBoard(listener) {
-      boardListeners.add(listener);
-      return () => boardListeners.delete(listener);
-    },
-
-    /** Signale sa propre defaite : elle vaut elimination. */
-    reportGameOver() {
-      if (socket && socket.readyState === WebSocket.OPEN) {
-        socket.send(encode({ type: CLIENT.OVER }));
-      }
-    },
-
-    /** Demande a lancer la partie sans attendre que le salon soit plein. */
-    begin() {
-      if (socket && socket.readyState === WebSocket.OPEN) {
-        socket.send(encode({ type: CLIENT.BEGIN }));
-      }
-    },
-
-    onAction(listener) {
-      actionListeners.add(listener);
-      return () => actionListeners.delete(listener);
-    },
-
-    onStatus(listener) {
-      statusListeners.add(listener);
-      return () => statusListeners.delete(listener);
-    },
-
-    close() {
-      actionListeners.clear();
-      statusListeners.clear();
-      boardListeners.clear();
-      if (socket) socket.close();
     },
   };
 }

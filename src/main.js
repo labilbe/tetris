@@ -3,15 +3,19 @@
  * moteur. Il tient la boucle de temps et fait circuler les actions.
  */
 
+import { joinRoom, selfId } from '../vendor/trystero-nostr.js';
+
 import { createMusic } from './audio/music.js';
 import { STATUS } from './engine/constants.js';
 import { createState, reduce, tick } from './engine/state.js';
 import { createKeyboardInput } from './input/keyboard.js';
 import { createTouchInput } from './input/touch.js';
+import { createBotTeam } from './net/bots.js';
 import { drawGarbageColumns } from './net/garbage.js';
-import { randomName } from './net/protocol.js';
+import { createPeerTransport } from './net/peer.js';
+import { cleanRoom, randomName, randomRoom } from './net/protocol.js';
 import { decodeBoard, encodeBoard } from './net/snapshot.js';
-import { createLocalTransport, createWebSocketTransport } from './net/transport.js';
+import { createLocalTransport } from './net/transport.js';
 import { createRenderer, createRivalRenderer } from './render/canvas.js';
 import { createHud } from './render/hud.js';
 import { DANGER, automatique, cadrer, createCamera, viser } from './view/camera.js';
@@ -45,6 +49,9 @@ const menuError = document.getElementById('menu-error');
 const waiting = document.getElementById('waiting');
 const waitingText = document.getElementById('waiting-text');
 const waitingBegin = document.getElementById('waiting-begin');
+const waitingBot = document.getElementById('waiting-bot');
+const waitingCopier = document.getElementById('waiting-copier');
+const salonInput = document.getElementById('salon');
 const remaining = document.getElementById('remaining');
 const pad = document.getElementById('pad');
 const game = document.querySelector('.game');
@@ -67,9 +74,7 @@ function updatePad() {
 const GHOST_PREFERENCE = 'tetris.ghost';
 const MUSIC_PREFERENCE = 'tetris.music';
 const PSEUDO_PREFERENCE = 'tetris.pseudo';
-
-/** Port du serveur de jeu : le WebSocket des parties, et le nom de la machine. */
-const GAME_PORT = 1985;
+const SALON_PREFERENCE = 'tetris.salon';
 
 /**
  * Rythme d'emission de son propre plateau vers les spectateurs.
@@ -158,7 +163,13 @@ function commandeCamera(type) {
   dessineMultiplex(maintenant);
 }
 
-/** Envoie une action : en reseau elle repassera par le serveur avant d'etre appliquee. */
+/**
+ * Envoie une action.
+ *
+ * Elle s'applique immediatement, en reseau comme en solo : personne d'autre ne
+ * simule notre plateau, donc il n'y a aucun arbitre a attendre. Seul le handicap
+ * part vers les autres, et c'est le transport qui s'en charge.
+ */
 function dispatch(action) {
   if (!transport) return; // encore au menu : il n'y a pas de partie a piloter
   if (outcome) return; // la partie en reseau est jouee, le verdict est tombe
@@ -172,8 +183,8 @@ function render() {
   // Le verdict arrete la musique comme le ferait une fin de partie.
   music.sync(outcome ? { ...state, status: STATUS.OVER } : state);
 
-  // Sa propre defaite met fin a la partie des deux joueurs : on la signale une
-  // seule fois, le serveur designant le perdant au premier signalement recu.
+  // Sa propre defaite vaut elimination : on la signale une seule fois, et c'est
+  // l'arbitre qui en tire le verdict.
   if (state.status === STATUS.OVER && !overReported && transport) {
     overReported = true;
     transport.reportGameOver();
@@ -203,53 +214,71 @@ function loop(time) {
   // regarde la fin de la partie plutot que de fixer un plateau mort.
   if (estMulti && transport) dessineMultiplex(time);
 
+  // Les adversaires artificiels avancent sur la meme image que le jeu : pas de
+  // seconde horloge, et ils gelent avec la partie quand l'onglet passe en
+  // arriere-plan. En solo et chez un invite, il n'y en a aucun.
+  transport?.tick?.(time);
+
   requestAnimationFrame(loop);
 }
 
 /**
- * Le multijoueur suppose un serveur sur la machine qui sert la page. Sur un
- * hebergement statique (GitHub Pages) il n'y en a aucun, et une page https ne
- * peut de toute facon pas ouvrir une connexion vers un port arbitraire. Autant
- * le dire tout de suite plutot que de laisser le joueur attendre une connexion
- * qui n'aboutira pas.
+ * Le code du salon : le point de rendez-vous des joueurs.
+ *
+ * Il vient du lien partage, sinon du dernier salon joue, sinon d'un tirage au
+ * sort. L'ordre compte : un joueur qui ouvre le lien d'un ami doit atterrir chez
+ * lui, pas dans son propre salon de la veille.
  */
-function multiplayerUnavailable() {
-  return location.protocol === 'https:'
-    ? 'Le multijoueur demande un serveur : il n’est pas disponible sur la version en ligne.'
-    : '';
+function salonChoisi() {
+  const saisi = cleanRoom(salonInput.value);
+  return saisi || randomRoom();
 }
 
 /**
- * Adresse du serveur de jeu, sur la machine qui sert la page.
+ * Inscrit le salon dans la barre d'adresse.
  *
- * Le protocole suit celui de la page : un navigateur refuse une connexion ws://
- * depuis une page https, la tenant pour du contenu mixte.
+ * La page devient alors son propre lien d'invitation : il n'y a rien a composer,
+ * il suffit de copier ce qu'on a sous les yeux.
  */
-function serverUrl() {
-  const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
-  return `${scheme}://${location.hostname}:${GAME_PORT}`;
-}
-
-/** Adresse du nom de la machine, servi par le serveur de jeu a cote du WebSocket. */
-function machineUrl() {
-  const scheme = location.protocol === 'https:' ? 'https' : 'http';
-  return `${scheme}://${location.hostname}:${GAME_PORT}/nom`;
+function afficherSalon(code) {
+  salonInput.value = code;
+  writePreference(SALON_PREFERENCE, code);
+  const url = new URL(location.href);
+  url.searchParams.set('salon', code);
+  history.replaceState(null, '', url);
 }
 
 /** Messages du serveur qui concernent l'attente et la connexion, pas le jeu. */
 function onNetworkStatus(status) {
   switch (status.kind) {
+    // Le rendez-vous n'a pas encore abouti : on dit ou l'on en est plutot que
+    // de laisser un ecran muet, dont on conclurait que le jeu est casse.
+    case 'seeking':
+      waitingText.textContent = status.message;
+      break;
+
     case 'waiting': {
       // Les pseudos plutot que le seul compte : on voit qui est deja la.
       const presents = status.names?.length ? status.names.join(', ') : '';
       const joueurs = presents || `${status.players} joueur${status.players > 1 ? 's' : ''}`;
       const manque = status.min - status.players;
-      waitingText.textContent = manque > 0
-        ? `Salon : ${joueurs}. Il en faut ${status.min} pour commencer.`
-        : `Salon : ${joueurs}. À vous de lancer quand vous voulez.`;
+
+      if (status.players <= 1) {
+        // Seul dans le salon : dire quoi faire, et non seulement ce qui manque.
+        waitingText.textContent = `Salon ${status.room} : vous êtes seul. Partagez le lien, `
+          + 'ou ajoutez un adversaire artificiel.';
+      } else {
+        waitingText.textContent = manque > 0
+          ? `Salon ${status.room} : ${joueurs}. Il en faut ${status.min} pour commencer.`
+          : `Salon ${status.room} : ${joueurs}. À vous de lancer quand vous voulez.`;
+      }
+
       // Le salon n'a pas de maximum : ce sont les presents qui decident du
       // depart, des qu'ils sont assez nombreux.
       waitingBegin.hidden = manque > 0;
+      // Seul l'hote peut peupler le salon : un adversaire artificiel tourne dans
+      // son onglet, il n'a pas de connexion a lui.
+      waitingBot.hidden = !transport?.estHote?.();
       break;
     }
     case 'start':
@@ -273,11 +302,13 @@ function onNetworkStatus(status) {
       break;
     case 'left':
       // Rien a faire : un depart en cours de partie vaut elimination, et c'est
-      // le serveur qui en tire les consequences. Renvoyer les autres au menu
+      // l'arbitre qui en tire les consequences. Renvoyer les autres au menu
       // arreterait une partie a plusieurs qui doit continuer.
       break;
     case 'closed':
-      if (state) showMenu('La connexion au serveur a été perdue.');
+      // Le depart de l'arbitre dit pourquoi : sans lui, plus de verdict
+      // possible, et il vaut mieux l'annoncer que laisser la partie sans fin.
+      if (state) showMenu(status.message ?? 'La connexion a été perdue.');
       break;
     default:
       break;
@@ -365,15 +396,28 @@ async function startGame(mode) {
   // Le mode choisit le transport, et rien d'autre : le reste du jeu ignore
   // s'il joue en solo ou en reseau.
   estMulti = mode === 'multi';
-  transport = estMulti
-    ? createWebSocketTransport(serverUrl(), { name: pseudoChoisi() })
-    : createLocalTransport();
 
-  if (mode === 'multi') {
+  if (estMulti) {
+    const code = salonChoisi();
+    afficherSalon(code);
+    transport = createPeerTransport({
+      code,
+      name: pseudoChoisi(),
+      joinRoom,
+      selfId,
+      // Les adversaires artificiels n'existent que chez l'hote, et c'est lui
+      // seul qui les fera avancer : un invite se retrouve avec une equipe vide,
+      // ce qui ne coute rien.
+      bots: createBotTeam(),
+    });
+
     waiting.hidden = false;
     waitingBegin.hidden = true;
-    waitingText.textContent = 'Connexion au serveur…';
+    waitingBot.hidden = true;
+    waitingText.textContent = 'Recherche du salon…';
     transport.onStatus(onNetworkStatus);
+  } else {
+    transport = createLocalTransport();
   }
 
   // Le compte des joueurs encore en jeu n'a de sens qu'en reseau. Sa place
@@ -462,17 +506,41 @@ createKeyboardInput({
 });
 
 document.getElementById('play-solo').addEventListener('click', () => startGame('solo'));
-const multiButton = document.getElementById('play-multi');
-multiButton.addEventListener('click', () => startGame('multi'));
+document.getElementById('play-multi').addEventListener('click', () => startGame('multi'));
 
-const indisponible = multiplayerUnavailable();
-if (indisponible) {
-  multiButton.disabled = true;
-  multiButton.title = indisponible;
-  document.querySelector('.menu-note').textContent = indisponible;
-}
 document.getElementById('waiting-cancel').addEventListener('click', () => showMenu());
 document.getElementById('waiting-begin').addEventListener('click', () => transport?.begin());
+
+// Ajouter un adversaire artificiel : c'est ce qui rend un salon jouable seul,
+// et en ligne on arrive souvent seul.
+waitingBot.addEventListener('click', () => {
+  if (!transport?.ajouterBot?.()) waitingBot.disabled = true;
+});
+
+// Le lien partageable est la barre d'adresse elle-meme : il n'y a rien a
+// composer, seulement a copier.
+waitingCopier.addEventListener('click', async () => {
+  const dit = (texte) => {
+    waitingCopier.textContent = texte;
+    setTimeout(() => { waitingCopier.textContent = 'Copier le lien'; }, 2000);
+  };
+
+  try {
+    await navigator.clipboard.writeText(location.href);
+    dit('Lien copié');
+  } catch {
+    // Presse-papiers refuse (page non securisee, permission denied) : on montre
+    // le lien, a defaut de pouvoir le copier. Mieux vaut le lire que rien.
+    dit(location.href);
+  }
+});
+
+// Le code du salon est normalise a la saisie : on tape « ab cd », on obtient
+// « ABCD », et c'est ce qu'on voit partir dans le lien.
+salonInput.addEventListener('input', () => {
+  salonInput.value = cleanRoom(salonInput.value);
+  writePreference(SALON_PREFERENCE, salonInput.value);
+});
 
 createTouchInput({ pad, onGameAction: dispatch });
 
@@ -493,55 +561,40 @@ document.getElementById('rival-next').addEventListener('click', () => commandeCa
 rivalAuto.addEventListener('click', () => commandeCamera('watchAuto'));
 
 /**
- * Remplit le champ Pseudo : le dernier pseudo saisi, ou a defaut le nom de la
- * machine.
+ * Remplit le champ Pseudo : le dernier pseudo saisi, ou un nom tire au sort.
  *
- * Le nom de la machine est demande au serveur de jeu, le navigateur ne pouvant
- * pas le lire lui-meme : aucune API ne l'expose, et c'est voulu — ce serait un
- * identifiant stable de plus offert a tout site visite. Le serveur, qui tourne
- * sur la machine, le connait, et ne le donne qu'a une page servie depuis cette
- * meme machine.
+ * Le nom de la machine servait autrefois de point de depart, demande au serveur
+ * de jeu — le navigateur ne pouvant pas le lire lui-meme, et c'est voulu : ce
+ * serait un identifiant stable de plus offert a tout site visite. Sans serveur,
+ * plus personne ne le connait, et c'est sans regret : la page etant desormais
+ * servie depuis Internet, la quasi-totalite des joueurs n'y avaient de toute
+ * facon pas droit.
  *
- * Un pseudo deja saisi n'est jamais remplace : le nom de la machine n'est qu'un
- * point de depart. Et si le serveur de jeu n'est pas lance, le champ reste vide
- * — on n'empeche personne de jouer en solo faute d'avoir trouve un nom.
+ * Un nom tire au sort est retenu aussitot : sans cela le joueur changerait
+ * d'identite a chaque rechargement, et les autres ne le reconnaitraient jamais
+ * d'une partie sur l'autre.
  */
-async function remplirPseudo() {
+function remplirPseudo() {
   const retenu = readTextPreference(PSEUDO_PREFERENCE, '');
-  pseudo.value = retenu;
-  if (retenu) return;
-
-  const machine = await nomDeMachine();
-  // Le joueur a pu commencer a taper pendant la requete : on ne lui prend pas
-  // le clavier des mains.
-  if (pseudo.value) return;
-
-  if (machine) {
-    // Le nom de la machine n'est volontairement pas enregistre : il est
-    // redemande a chaque visite, et suit donc la machine si on la renomme.
-    pseudo.value = machine;
+  if (retenu) {
+    pseudo.value = retenu;
     return;
   }
 
-  // Machine inconnue — c'est le cas de tout invite du reseau local. Un nom tire
-  // au sort vaut mieux qu'un champ vide, et celui-la est retenu aussitot : sans
-  // cela le joueur changerait d'identite a chaque rechargement, et les autres ne
-  // le reconnaitraient jamais d'une partie sur l'autre.
   pseudo.value = randomName();
   writePreference(PSEUDO_PREFERENCE, pseudo.value);
 }
 
-/** Le nom de la machine selon le serveur de jeu, ou une chaine vide. */
-async function nomDeMachine() {
-  try {
-    const reponse = await fetch(machineUrl());
-    const { name } = await reponse.json();
-    return typeof name === 'string' ? name : '';
-  } catch {
-    // Serveur de jeu absent ou injoignable : on n'empeche personne de jouer en
-    // solo faute d'avoir trouve un nom.
-    return '';
-  }
+/**
+ * Remplit le champ Salon : celui du lien recu, sinon le dernier joue, sinon un
+ * tirage au sort.
+ *
+ * Le lien l'emporte sur la preference : qui ouvre l'invitation d'un ami doit
+ * atterrir chez lui, pas dans son propre salon de la veille.
+ */
+function remplirSalon() {
+  const invite = cleanRoom(new URLSearchParams(location.search).get('salon') ?? '');
+  salonInput.value = invite || cleanRoom(readTextPreference(SALON_PREFERENCE, '')) || randomRoom();
 }
 
 // Le pseudo est retenu des qu'il change, et non au lancement d'une partie en
@@ -550,3 +603,4 @@ async function nomDeMachine() {
 pseudo.addEventListener('input', () => writePreference(PSEUDO_PREFERENCE, pseudo.value.trim()));
 
 remplirPseudo();
+remplirSalon();
