@@ -396,9 +396,10 @@ export function createPeerTransport({
 
   /** Diffuse un instantane de plateau a ceux qui regardent. */
   function diffuserEcran(playerId, board) {
-    if (envoyerEcran && pairs.size > 0) {
-      envoyerEcran(encode({ type: SERVER.BOARD, playerId, board }));
-    }
+    // Pas de filtre sur les pairs connus, pour la meme raison que dans
+    // versPairs : une liste en retard ferait disparaitre les vignettes sans que
+    // rien ne l'explique.
+    if (envoyerEcran) envoyerEcran(encode({ type: SERVER.BOARD, playerId, board }));
     if (playerId !== moiId) {
       for (const listener of boardListeners) listener(playerId, board);
     }
