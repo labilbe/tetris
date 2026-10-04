@@ -51,6 +51,7 @@ const waitingText = document.getElementById('waiting-text');
 const waitingBegin = document.getElementById('waiting-begin');
 const waitingBot = document.getElementById('waiting-bot');
 const waitingCopier = document.getElementById('waiting-copier');
+const waitingDiag = document.getElementById('waiting-diag');
 const salonInput = document.getElementById('salon');
 const remaining = document.getElementById('remaining');
 const pad = document.getElementById('pad');
@@ -222,6 +223,29 @@ function loop(time) {
   requestAnimationFrame(loop);
 }
 
+/** Rafraichissement de la ligne de diagnostic, tant qu'on attend. */
+let diagTimer = null;
+
+/**
+ * Affiche l'etat interne du transport sous l'ecran d'attente.
+ *
+ * Les pannes de ce reseau sont toutes silencieuses : un message qui ne part pas,
+ * ou qui n'arrive pas. « Ca ne marche pas » ne distingue alors pas un pair
+ * jamais trouve d'un depart de partie perdu en route. Ces quelques nombres, lus
+ * sur les deux appareils, tranchent d'un coup d'oeil.
+ */
+function montrerDiagnostic() {
+  const d = transport?.diagnostic?.();
+  if (!d) {
+    waitingDiag.textContent = '';
+    return;
+  }
+
+  const pairs = d.pairs.length ? d.pairs.join(' ') : 'aucun';
+  waitingDiag.textContent = `moi ${d.moi} · pairs ${d.pairs.length} (${pairs}) · `
+    + `hôte ${d.hote} · salon ${d.salon ?? '—'} · envoyés ${d.envoyes} · reçus ${d.recus}`;
+}
+
 /**
  * Le code du salon : le point de rendez-vous des joueurs.
  *
@@ -345,6 +369,8 @@ function pseudoChoisi() {
 }
 
 function showMenu(message = '') {
+  if (diagTimer) { clearInterval(diagTimer); diagTimer = null; }
+  waitingDiag.textContent = "";
   if (transport) {
     transport.close();
     transport = null;
@@ -416,6 +442,10 @@ async function startGame(mode) {
     waitingBot.hidden = true;
     waitingText.textContent = 'Recherche du salon…';
     transport.onStatus(onNetworkStatus);
+    // Le diagnostic vit le temps de l attente : une fois la partie lancee, il
+    // n a plus rien a expliquer.
+    diagTimer = setInterval(montrerDiagnostic, 1000);
+    montrerDiagnostic();
   } else {
     transport = createLocalTransport();
   }

@@ -126,12 +126,19 @@ function canal(room, nom) {
 
   return {
     envoyer(message, destinataire) {
-      // L'envoi est asynchrone et peut echouer si un pair vient de partir :
-      // cela ne doit pas interrompre la partie de celui qui reste.
-      const envoi = destinataire
-        ? action.send(message, { target: destinataire })
-        : action.send(message);
-      Promise.resolve(envoi).catch(() => {});
+      // Emettre peut echouer de deux facons : en levant tout de suite — c'est le
+      // cas quand il n'y a aucun pair en face — ou en rejetant plus tard, si un
+      // pair s'en va en cours de route. Ni l'une ni l'autre ne doit interrompre
+      // celui qui emet : un joueur seul dans son salon a justement personne a
+      // qui parler, et il doit quand meme voir son salon.
+      try {
+        const envoi = destinataire
+          ? action.send(message, { target: destinataire })
+          : action.send(message);
+        Promise.resolve(envoi).catch(() => {});
+      } catch {
+        // Personne en face : ce n'est pas une faute.
+      }
     },
     recevoir(handler) {
       brancher(action, 'onMessage', handler);
@@ -209,6 +216,17 @@ export function createPeerTransport({
   let resoudre = null;
   let rejeter = null;
 
+  /**
+   * Comptes d'emission et de reception, pour le diagnostic.
+   *
+   * Les pannes rencontrees sur ce transport ont toutes la meme forme : un
+   * message qui ne part pas, ou qui n'arrive pas, sans que rien ne le signale.
+   * Compter les deux bouts est le seul moyen de distinguer « je n'ai rien
+   * envoye » de « il n'a rien recu ».
+   */
+  let envoyes = 0;
+  let recus = 0;
+
   function notifyStatus(status) {
     for (const listener of statusListeners) listener(status);
   }
@@ -234,6 +252,8 @@ export function createPeerTransport({
    */
   function versPairs(message, to = TOUS) {
     if (!envoyer) return;
+
+    envoyes += 1;
 
     // Un message nominatif est diffuse a tous, en portant le nom de son
     // destinataire. L'envoi cible de la bibliotheque s'est revele peu sur, et il
@@ -351,9 +371,13 @@ export function createPeerTransport({
   function router(envelopes) {
     for (const { to, message } of envelopes) {
       if (to === TOUS) {
+        // Son propre etat d'abord, le reseau ensuite. L'inverse faisait
+        // dependre l'affichage de son salon de la reussite d'un envoi — et un
+        // joueur encore seul restait bloque sur « Recherche du salon », faute
+        // d'avoir quelqu'un a qui parler.
+        appliquerArbitre(message);
         versPairs(message);
         for (const id of idsBots()) bots.receive(id, message);
-        appliquerArbitre(message);
         continue;
       }
       if (to === moiId) {
@@ -527,6 +551,7 @@ export function createPeerTransport({
           const message = decode(brut);
           if (!message) return;
 
+          recus += 1;
           noterPair(fromId);
 
           // Message nominatif qui ne nous est pas adresse : il passe devant
@@ -663,6 +688,27 @@ export function createPeerTransport({
     /** Est-on l'arbitre ? L'interface n'offre les bots qu'a lui. */
     estHote() {
       return host !== null;
+    },
+
+    /**
+     * L'etat interne du transport, en clair.
+     *
+     * Toutes les pannes rencontrees ici avaient la meme forme : un message qui
+     * ne part pas, ou qui n'arrive pas, en silence. Depuis l'exterieur, « ca ne
+     * marche pas » ne distingue pas un pair jamais trouve d'un depart de partie
+     * perdu en route. Ces quelques nombres, affiches dans l'ecran d'attente,
+     * suffisent a trancher d'un coup d'oeil.
+     */
+    diagnostic() {
+      const court = (id) => (id ? String(id).slice(0, 4) : '—');
+      return {
+        moi: court(moiId),
+        pairs: [...pairs].map(court),
+        hote: hoteId === moiId ? `${court(hoteId)} (moi)` : court(hoteId),
+        salon: host?.room()?.players.length ?? null,
+        envoyes,
+        recus,
+      };
     },
 
     close() {

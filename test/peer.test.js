@@ -24,7 +24,7 @@ const delai = (ms) => new Promise((r) => { setTimeout(r, ms); });
  * memoire. Les arrivees sont annoncees sur une micro-tache, comme le vrai, pour
  * que les ecouteurs soient en place quand elles tombent.
  */
-function creerMaillage({ sourds = [], cibleCassee = false } = {}) {
+function creerMaillage({ sourds = [], cibleCassee = false, envoiQuiLeve = false } = {}) {
   /** @type {Map<string, Map<string, object>>} */
   const salons = new Map();
 
@@ -64,6 +64,9 @@ function creerMaillage({ sourds = [], cibleCassee = false } = {}) {
             const canal = {
               onMessage: null,
               send(donnees, options = {}) {
+                // Sans pair en face, la bibliotheque peut lever sur-le-champ.
+                const autres = [...gens.keys()].filter((id) => id !== selfId);
+                if (envoiQuiLeve && autres.length === 0) throw new Error("aucun pair");
                 const to = options.target;
                 // L'envoi nominatif de la bibliotheque s'est revele peu sur en
                 // vrai : on sait donc le simuler defaillant.
@@ -133,6 +136,22 @@ describe('rendez-vous et election', () => {
     const cherche = dernier(a.statuts, 'seeking');
     assert.ok(cherche, 'aucune recherche annoncee');
     assert.match(cherche.message, /SALON/);
+
+    a.transport.close();
+  });
+
+  it('montre son salon meme quand emettre leve, faute de pairs', async () => {
+    // Un joueur seul n'a personne a qui parler : la bibliotheque peut lever
+    // sur-le-champ. Son propre salon ne doit pas en dependre — sans quoi il
+    // reste bloque sur « Recherche du salon » sans que rien ne l'explique.
+    const maillage = creerMaillage({ envoiQuiLeve: true });
+    const a = joueur(maillage, 'a', { name: 'Ali' });
+    await delai(RESPIRE);
+
+    const attente = dernier(a.statuts, 'waiting');
+    assert.ok(attente, 'le joueur n a jamais vu son salon');
+    assert.equal(attente.players, 1);
+    assert.deepEqual(attente.names, ['Ali']);
 
     a.transport.close();
   });
