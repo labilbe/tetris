@@ -1,0 +1,25 @@
+# Relais de salons : la seule chose que ce jeu heberge.
+#
+# Il ne connait aucune regle de Tetris. Il reunit les joueurs, impose la graine,
+# donne un ordre aux messages et arbitre les eliminations — rien de plus. Toute
+# cette logique vit dans src/net/host.js, pure et testee sous `node --test` ; le
+# worker ne fait que la brancher sur des WebSockets.
+
+name = "tetris-relais"
+main = "worker/index.js"
+compatibility_date = "2025-09-01"
+
+# Un salon = un Durable Object, nomme d'apres son code. C'est ce qui donne a
+# chaque partie son propre espace, sans que les salons se connaissent.
+[[durable_objects.bindings]]
+name = "SALONS"
+class_name = "Salon"
+
+# SQLite plutot que l'ancien stockage : c'est la seule forme de Durable Object
+# ouverte au palier gratuit.
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Salon"]
+
+[observability]
+enabled = true

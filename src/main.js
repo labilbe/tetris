@@ -3,16 +3,15 @@
  * moteur. Il tient la boucle de temps et fait circuler les actions.
  */
 
-import { joinRoom, selfId } from '../vendor/trystero-nostr.js';
-
 import { createMusic } from './audio/music.js';
 import { STATUS } from './engine/constants.js';
 import { createState, reduce, tick } from './engine/state.js';
 import { createKeyboardInput } from './input/keyboard.js';
 import { createTouchInput } from './input/touch.js';
-import { createBotTeam } from './net/bots.js';
+import { createBotClients } from './net/bot-client.js';
 import { drawGarbageColumns } from './net/garbage.js';
-import { createPeerTransport } from './net/peer.js';
+import { relaisUrl } from './net/relais.js';
+import { createSocketTransport } from './net/socket.js';
 import { cleanRoom, randomName, randomRoom } from './net/protocol.js';
 import { decodeBoard, encodeBoard } from './net/snapshot.js';
 import { createLocalTransport } from './net/transport.js';
@@ -51,7 +50,6 @@ const waitingText = document.getElementById('waiting-text');
 const waitingBegin = document.getElementById('waiting-begin');
 const waitingBot = document.getElementById('waiting-bot');
 const waitingCopier = document.getElementById('waiting-copier');
-const waitingDiag = document.getElementById('waiting-diag');
 const salonInput = document.getElementById('salon');
 const remaining = document.getElementById('remaining');
 const pad = document.getElementById('pad');
@@ -216,35 +214,15 @@ function loop(time) {
   if (estMulti && transport) dessineMultiplex(time);
 
   // Les adversaires artificiels avancent sur la meme image que le jeu : pas de
-  // seconde horloge, et ils gelent avec la partie quand l'onglet passe en
-  // arriere-plan. En solo et chez un invite, il n'y en a aucun.
-  transport?.tick?.(time);
+  // seconde horloge, et ils gelent avec la partie quand l onglet passe en
+  // arriere-plan.
+  botClients?.tick(time);
 
   requestAnimationFrame(loop);
 }
 
-/** Rafraichissement de la ligne de diagnostic, tant qu'on attend. */
-let diagTimer = null;
-
-/**
- * Affiche l'etat interne du transport sous l'ecran d'attente.
- *
- * Les pannes de ce reseau sont toutes silencieuses : un message qui ne part pas,
- * ou qui n'arrive pas. « Ca ne marche pas » ne distingue alors pas un pair
- * jamais trouve d'un depart de partie perdu en route. Ces quelques nombres, lus
- * sur les deux appareils, tranchent d'un coup d'oeil.
- */
-function montrerDiagnostic() {
-  const d = transport?.diagnostic?.();
-  if (!d) {
-    waitingDiag.textContent = '';
-    return;
-  }
-
-  const pairs = d.pairs.length ? d.pairs.join(' ') : 'aucun';
-  waitingDiag.textContent = `moi ${d.moi} · pairs ${d.pairs.length} (${pairs}) · `
-    + `hôte ${d.hote} · salon ${d.salon ?? '—'} · envoyés ${d.envoyes} · reçus ${d.recus}`;
-}
+/** Les adversaires artificiels de cette partie, chacun avec sa connexion. */
+let botClients = null;
 
 /**
  * Le code du salon : le point de rendez-vous des joueurs.
@@ -302,7 +280,6 @@ function onNetworkStatus(status) {
       waitingBegin.hidden = manque > 0;
       // Seul l'hote peut peupler le salon : un adversaire artificiel tourne dans
       // son onglet, il n'a pas de connexion a lui.
-      waitingBot.hidden = !transport?.estHote?.();
       break;
     }
     case 'start':
@@ -369,8 +346,7 @@ function pseudoChoisi() {
 }
 
 function showMenu(message = '') {
-  if (diagTimer) { clearInterval(diagTimer); diagTimer = null; }
-  waitingDiag.textContent = "";
+  if (botClients) { botClients.close(); botClients = null; }
   if (transport) {
     transport.close();
     transport = null;
@@ -426,26 +402,21 @@ async function startGame(mode) {
   if (estMulti) {
     const code = salonChoisi();
     afficherSalon(code);
-    transport = createPeerTransport({
-      code,
-      name: pseudoChoisi(),
-      joinRoom,
-      selfId,
-      // Les adversaires artificiels n'existent que chez l'hote, et c'est lui
-      // seul qui les fera avancer : un invite se retrouve avec une equipe vide,
-      // ce qui ne coute rien.
-      bots: createBotTeam(),
-    });
+    const url = relaisUrl(location.search, location.protocol === 'https:');
+    transport = createSocketTransport({ url, code, name: pseudoChoisi() });
+
+    // Chaque adversaire artificiel ouvre sa propre connexion : le relais ne le
+    // distingue pas d'un navigateur de plus, et c'est ce qui fait qu'on eprouve
+    // la vraie chaine plutot qu'une maquette.
+    botClients = createBotClients({ url, code });
 
     waiting.hidden = false;
     waitingBegin.hidden = true;
-    waitingBot.hidden = true;
-    waitingText.textContent = 'Recherche du salon…';
+    // Avec un relais il n'y a plus d'hote : n'importe qui peut peupler le salon.
+    waitingBot.hidden = false;
+    waitingBot.disabled = false;
+    waitingText.textContent = `Connexion au salon ${code}…`;
     transport.onStatus(onNetworkStatus);
-    // Le diagnostic vit le temps de l attente : une fois la partie lancee, il
-    // n a plus rien a expliquer.
-    diagTimer = setInterval(montrerDiagnostic, 1000);
-    montrerDiagnostic();
   } else {
     transport = createLocalTransport();
   }
@@ -544,7 +515,7 @@ document.getElementById('waiting-begin').addEventListener('click', () => transpo
 // Ajouter un adversaire artificiel : c'est ce qui rend un salon jouable seul,
 // et en ligne on arrive souvent seul.
 waitingBot.addEventListener('click', () => {
-  if (!transport?.ajouterBot?.()) waitingBot.disabled = true;
+  if (!botClients?.ajouter()) waitingBot.disabled = true;
 });
 
 // Le lien partageable est la barre d'adresse elle-meme : il n'y a rien a

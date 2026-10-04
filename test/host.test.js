@@ -1,5 +1,5 @@
 /**
- * Tests de l'arbitre et de son election.
+ * Tests de l'arbitre.
  *
  * L'arbitre renvoyant ses messages au lieu de les emettre, tout se verifie ici
  * sans reseau : c'est la couverture que l'ancien serveur n'avait pas.
@@ -8,7 +8,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { TOUS, createHost, elire } from '../src/net/host.js';
+import { TOUS, createHost } from '../src/net/host.js';
 import { CLIENT, SERVER } from '../src/net/protocol.js';
 
 /** Graine fixe : les tests ne doivent dependre d'aucun hasard. */
@@ -25,43 +25,6 @@ function salonAvec(...entrees) {
 function duType(envelopes, type) {
   return envelopes.filter((e) => e.message.type === type);
 }
-
-describe('elire', () => {
-  it('ne designe personne dans un salon vide', () => {
-    assert.equal(elire([]), null);
-  });
-
-  it('designe le plus petit identifiant', () => {
-    assert.equal(elire(['c', 'a', 'b']), 'a');
-  });
-
-  it('donne le meme hote quel que soit l ordre d arrivee', () => {
-    // C'est toute la propriete qui compte : chacun calcule chez soi et tous
-    // tombent d'accord, sans echanger un message.
-    const ids = ['zoe', 'alf', 'mia', 'bob'];
-    assert.equal(elire(ids), elire([...ids].reverse()));
-    assert.equal(elire(ids), elire([...ids].sort()));
-  });
-
-  it('reste stable quand un autre que l hote part', () => {
-    assert.equal(elire(['a', 'b', 'c']), 'a');
-    assert.equal(elire(['a', 'c']), 'a');
-  });
-
-  it('change d hote quand un plus petit identifiant arrive', () => {
-    // C'est le cas d'abdication : il ne peut survenir qu'avant le depart.
-    assert.equal(elire(['b', 'c']), 'b');
-    assert.equal(elire(['a', 'b', 'c']), 'a');
-  });
-
-  it('ignore ce qui n est pas un identifiant', () => {
-    assert.equal(elire([null, 'b', undefined, 'a', 42]), 'a');
-  });
-
-  it('se contente d un seul pair', () => {
-    assert.equal(elire(['seul']), 'seul');
-  });
-});
 
 describe('entree dans le salon', () => {
   it('annonce l attente a tout le salon', () => {
@@ -93,8 +56,8 @@ describe('entree dans le salon', () => {
   });
 
   it('redit l etat du salon a qui se presente deux fois', () => {
-    // Un pair se represente quand son election se corrige, et le reseau peut
-    // doubler un message. Le prendre pour un refus ejecterait un joueur assis.
+    // Le reseau peut doubler un message. Le prendre pour un refus ejecterait
+    // un joueur deja assis.
     const host = salonAvec(['a', 'Ali'], ['b', 'Bea']);
     const envelopes = host.receive('b', { type: CLIENT.JOIN, name: 'Bea' });
 

@@ -1,6 +1,6 @@
 # Tetris
 
-Un Tetris jouable dans le navigateur, en HTML/Canvas et JavaScript vanilla. Aucun build, **aucune dépendance d'exécution**, et aucun serveur — y compris pour le multijoueur, où les navigateurs se parlent en direct.
+Un Tetris jouable dans le navigateur, en HTML/Canvas et JavaScript vanilla. Aucun build et **aucune dépendance d'exécution**. La page est un paquet de fichiers statiques ; seul le multijoueur demande un relais, et c'est un unique fichier de cent lignes.
 
 Le moteur de jeu est **pur et déterministe** : il n'accède ni au DOM, ni à l'horloge, ni à `Math.random`. C'est ce qui permet de le tester sous Node, et de donner à tous les joueurs la même suite de pièces.
 
@@ -18,7 +18,19 @@ Le projet utilise des modules ES : il faut le servir en HTTP, un double-clic sur
 npm start          # sert le dossier sur http://localhost:1984
 ```
 
-C'est tout : il n'y a pas de second processus à lancer, pas de port à ouvrir dans le pare-feu, et pas de dépendance à installer. Le multijoueur fonctionne depuis `localhost` comme depuis la version en ligne.
+Le solo n'a besoin de rien d'autre. Pour travailler sur le **multijoueur**, lancez aussi le relais :
+
+```bash
+npm run relais     # le Worker Cloudflare, en local, sur le port 8787
+```
+
+puis ouvrez la page en lui désignant ce relais :
+
+```
+http://localhost:1984/?salon=ESSAI&relais=ws://127.0.0.1:8787
+```
+
+Deux onglets sur cette adresse jouent l'un contre l'autre sans rien déployer. Le paramètre `?relais=` l'emporte sur l'adresse par défaut : c'est ce qui permet d'essayer, et de dépanner, sans toucher au code.
 
 ### Sur téléphone
 
@@ -30,7 +42,9 @@ C'est tout : il n'y a pas de second processus à lancer, pas de port à ouvrir d
 npm test           # sans navigateur, et sans rien à installer
 ```
 
-Le réseau y est compris : `test/peer.test.js` monte plusieurs joueurs dans un seul processus Node, sur un faux maillage, et vérifie l'élection de l'hôte, le salon, le handicap et les verdicts — sans WebRTC. Ce qui échappe à ces tests, et qu'il faut donc essayer à la main : la mise en relation réelle, le DOM, et la traversée des pare-feu.
+L'arbitrage y est compris : `test/host.test.js` éprouve le salon, la graine, les éliminations et le verdict sans ouvrir une seule connexion, parce que l'arbitre renvoie ses messages au lieu de les émettre.
+
+Ce que `node --test` ne couvre pas — les connexions réelles et le DOM — s'éprouve avec le relais local, et sans navigateur : deux clients WebSocket dans un même script suffisent à vérifier qu'un salon se forme, que la partie démarre **chez les deux** avec la même graine, que le handicap va bien à l'autre et pas à soi, et que le verdict tombe. C'est l'essai qui manquait cruellement à la version pair-à-pair, et qui a motivé le retour à un relais.
 
 Pour jouer sans être plusieurs, voir [Jouer contre l'IA](#jouer-contre-lia).
 
@@ -88,27 +102,29 @@ src/
     midi.js       lecteur de fichier MIDI, sans dépendance
     music.js      synthèse Web Audio, calée sur l'état du jeu
   net/
-    protocol.js   vocabulaire réseau, partagé entre pairs
+    protocol.js   vocabulaire réseau, partagé avec le relais
     transport.js  le contrat d'acheminement des actions, et le mode solo
-    peer.js       le pair-à-pair : la seule frontière avec WebRTC
+    socket.js     le transport réseau : une WebSocket vers le relais
+    relais.js     l'adresse du relais, surchargeable par ?relais=
     host.js       l'arbitre : salon, graine, verdict (fonctions pures)
     rooms.js      salons : qui attend qui, avec quelle graine (fonctions pures)
-    bots.js       adversaires artificiels : le pilote, dans la page
+    bots.js       adversaires artificiels : la décision et le pilote
+    bot-client.js chaque adversaire, branché sur le relais
     snapshot.js   instantané de plateau : ce que les autres voient de notre partie
     garbage.js    tirage des colonnes de handicap, côté émetteur
   view/
     preferences.js réglages locaux (projection, musique, pseudo, salon)
     camera.js     qui regarde-t-on dans le multiplex, et jusqu'à quand
   main.js       câblage : DOM + horloge + boucle de jeu
-vendor/
-  trystero-nostr.js  la mise en relation WebRTC, copiée telle quelle (voir plus bas)
+worker/
+  index.js      le relais : lit le code du salon et confie la connexion
+  salon.js      un salon : branche l'arbitre sur des WebSockets
 test/
   engine.test.js    tests du moteur
   midi.test.js      tests du lecteur MIDI
   protocol.test.js  codes de salon et pseudos
   rooms.test.js     tests des salons
   host.test.js      tests de l'arbitre et de son élection
-  peer.test.js      tests du transport, sur un faux maillage
   bots.test.js      tests du pilote des adversaires artificiels
   multiplex.test.js instantané de plateau et caméra
   ai.test.js        décision de l'IA et tirage du handicap
@@ -126,21 +142,21 @@ Chaque joueur ouvre la page, vérifie le **code du salon** et choisit « Multijo
 
 Le salon accueille **autant de joueurs que voulu** ; il en faut simplement deux pour jouer.
 
-### Il n'y a pas de serveur
+### Le relais
 
-Les navigateurs se parlent **directement**, en WebRTC. Aucune machine n'héberge la partie : ni la vôtre, ni GitHub, qui ne sert que des fichiers.
+Un **Worker Cloudflare** réunit les joueurs : `worker/`, une centaine de lignes. Un salon y est un *Durable Object* nommé d'après son code, si bien que deux parties ne se connaissent jamais. La page, elle, reste statique et servie par GitHub Pages.
 
-Reste qu'il faut bien se trouver. C'est le rôle de la **signalisation** : le temps d'un échange d'adresses, les deux navigateurs passent par le réseau public [Nostr](https://nostr.com/) — une vingtaine de relais, donc aucun point de panne unique — qui leur sert de tableau de rendez-vous. Une fois la connexion établie, plus rien n'y transite : le jeu va d'un navigateur à l'autre.
+Le relais **ne connaît aucune règle de Tetris** et ne calcule aucun plateau. Il attribue les identifiants, tient la composition du salon, tire la graine, arbitre les éliminations, et transmet le reste sans le lire.
 
-**Un joueur sur dix environ n'y arrivera pas.** Certains réseaux (NAT symétrique, 4G d'entreprise) refusent toute connexion directe. Les contourner demanderait un serveur relais — un TURN — qu'il faudrait héberger et payer, c'est-à-dire exactement ce dont on vient de se passer. Le jeu le dit alors franchement plutôt que d'afficher une attente muette, et le contournement est simple : essayer depuis un autre réseau, ou depuis le même Wi-Fi que son adversaire.
+Tout cet arbitrage vit dans `src/net/host.js` — pur, sans réseau, couvert par `node --test`. Le Worker ne fait que le brancher sur des WebSockets : les gestionnaires **renvoient** les messages à émettre au lieu de les pousser eux-mêmes. C'est ce qui permet au même fichier de tourner dans un Worker, qui n'a ni Node ni `ws`, et d'être éprouvé sans ouvrir une connexion.
 
-### L'hôte
+#### Pourquoi pas du pair-à-pair ?
 
-L'un des joueurs **arbitre** : il tient la composition du salon, tire la graine, et désigne le vainqueur. C'est le seul rôle qui demande qu'une machine tranche.
+Le jeu a connu une version sans aucun serveur, où les navigateurs se parlaient directement en WebRTC. Elle n'a jamais fonctionné de façon fiable, et la leçon mérite d'être écrite : les pannes y étaient **silencieuses**. Un message qui ne part pas, un message qui n'arrive pas, et rien dans l'API pour le dire — quatre pannes successives, dont une seule a pu être reproduite hors d'une partie réelle.
 
-Il est choisi sans négociation : **le plus petit identifiant** parmi les présents. Chacun calcule la règle chez soi, tous voient le même ensemble de pairs, et tous tombent donc d'accord sans échanger un message. Si un joueur au plus petit identifiant arrive avant le lancement, l'hôte en place lui cède la main — le salon n'a alors rien à perdre, sauf la graine, qui est arbitraire.
+Le reproche de fond n'est pas la bibliothèque : c'est qu'**on ne pouvait pas l'éprouver**. Deux pairs ne se découvraient jamais dans un navigateur de développement, donc le seul juge était une partie entre deux vraies machines, avec un aller-retour par hypothèse. Un relais, lui, se lance en local et se vérifie en dix secondes depuis un script — ce qu'on fait maintenant à chaque changement.
 
-**Si l'hôte quitte en cours de partie, la partie s'arrête**, et le jeu le dit. Lui transférer l'arbitrage en pleine partie coûterait plus que cela ne rapporte : ce qu'il détient — le décompte des éliminations — est précisément ce dont la perte change le verdict.
+S'y ajoutait une limite irréductible : les réseaux à NAT symétrique refusent toute connexion directe, et environ un joueur sur dix ne pouvait pas jouer du tout.
 
 Dès le second joueur, un bouton « Lancer la partie » apparaît. **Rien ne démarre tout seul** : ce sont les présents qui décident du moment, sans quoi un arrivant de plus lancerait la partie à leur place. Une fois lancée, le salon n'accepte plus personne — un retardataire manquerait le début et jouerait une autre partie.
 
@@ -157,27 +173,27 @@ Chaque joueur ne joue que son propre plateau. Personne ne simule celui d'un autr
 Il n'y a par conséquent **rien à synchroniser, et aucun ordre à imposer**. Ce qui circule se réduit à :
 
 ```
-pair -> hôte  : { type: 'join', room, name }
-pair -> hôte  : { type: 'begin' }
-pair -> hôte  : { type: 'over' }
-hôte -> pair  : { type: 'waiting', room, players, min, names }
-hôte -> pair  : { type: 'start', seed, playerId, players, names }
-hôte -> pair  : { type: 'eliminated', playerId, remaining }
-hôte -> pair  : { type: 'finished', winner }
-hôte -> pair  : { type: 'left', playerId }
-hôte -> pair  : { type: 'error', message }
+client -> relais : { type: 'join', room, name }
+client -> relais : { type: 'begin' }
+client -> relais : { type: 'over' }
+client -> relais : { type: 'action', action }      le handicap
+client -> relais : { type: 'board', board }        affichage seul
 
-pair -> pairs : { type: 'action', playerId, action }    le handicap, en direct
-pair -> pairs : { type: 'board', playerId, board }      affichage seul, en direct
+relais -> client : { type: 'waiting', room, players, min, names }
+relais -> client : { type: 'start', seed, playerId, players, names }
+relais -> client : { type: 'eliminated', playerId, remaining }
+relais -> client : { type: 'finished', winner }
+relais -> client : { type: 'left', playerId }
+relais -> client : { type: 'error', message }
+relais -> autres : { type: 'action', playerId, action }
+relais -> autres : { type: 'board', playerId, board }
 ```
 
-Les deux dernières lignes ne passent pas par l'hôte : le handicap n'a besoin d'aucun arbitrage — ses colonnes sont tirées chez l'émetteur — et un instantané perdu ne change la partie de personne. Les router par l'hôte doublerait la latence et ferait de lui une panne de plus.
+Les deux dernières lignes vont **à tous sauf leur émetteur** : celui qui efface les lignes ne se pénalise pas, et il a déjà son plateau sous les yeux.
 
-Le vocabulaire est défini une seule fois, dans `src/net/protocol.js` : les deux côtés ne peuvent pas diverger.
+Le vocabulaire est défini une seule fois, dans `src/net/protocol.js`, importé par la page comme par le Worker : les deux côtés ne peuvent pas diverger.
 
-**Une touche s'applique immédiatement**, en réseau comme en solo. Du temps où tout passait par un serveur, elle partait et n'agissait qu'à son retour — un aller-retour par touche, pour garantir un ordre dont on vient de voir qu'il ne servait à rien. Le pair-à-pair n'est donc pas un pis-aller : il est plus rapide que ne l'était le réseau local, et la « prédiction locale » qu'on envisageait de greffer un jour n'a plus d'objet.
-
-Un piège, pour qui touchera à ce code : `CLIENT` et `SERVER` partagent deux noms, `action` et `board`. Sur un socket la direction allait de soi — ce qui montait venait d'un client, ce qui descendait du serveur. Dans un maillage il n'y a plus de haut ni de bas, et prendre un `action` reçu pour une demande le fait rediffuser sans fin. Seuls `join`, `begin` et `over`, qui n'ont pas d'homonyme, sont donc reconnus comme des demandes.
+**Une touche s'applique immédiatement**, en réseau comme en solo — alors même qu'un serveur est de retour dans l'histoire. Dans la toute première version, chaque action partait au serveur et n'agissait qu'à son retour : un aller-retour par touche, pour garantir un ordre dont on vient de voir qu'il ne servait à rien. La « prédiction locale » qu'on envisageait alors de greffer n'a plus d'objet.
 
 ### Blocs de handicap
 
@@ -229,7 +245,7 @@ Le **code du salon** suit la même règle, avec une priorité de plus : un code 
 
 Une vignette à gauche du plateau montre **un adversaire à la fois**, et non tous : à un salon sans maximum, une grille de plateaux ne tiendrait ni à l'écran ni au regard. C'est la caméra qui choisit.
 
-**Comment le plateau d'un autre arrive jusqu'à nous.** Chacun émet un instantané de son propre plateau cinq fois par seconde, directement à ses pairs. C'est un **canal purement décoratif** (`board`) : un instantané perdu, tardif ou incohérent ne change le jeu de personne, il fait au pire sauter une vignette. Seuls les instantanés des adversaires artificiels passent par l'hôte, et il le faut bien — un bot n'a pas de connexion à lui.
+**Comment le plateau d'un autre arrive jusqu'à nous.** Chacun émet un instantané de son propre plateau cinq fois par seconde, que le relais transmet aux autres sans le lire. C'est un **canal purement décoratif** (`board`) : un instantané perdu, tardif ou incohérent ne change le jeu de personne, il fait au pire sauter une vignette.
 
 C'est ce qui écarte la difficulté qui avait fait renoncer à cette fonctionnalité : rejouer la partie d'un adversaire à partir de ses actions supposerait de dater celles-ci, sa gravité avançant sur *son* horloge. Une image toute faite n'a pas d'horloge. Le format est du texte — une lettre par case, vingt chaînes de dix caractères — lisible dans un journal réseau et assez léger pour partir sans cérémonie.
 
@@ -248,13 +264,13 @@ La colonne du multiplex est **réservée même en solo**, où elle est simplemen
 
 Le multijoueur se joue mal à un joueur : il en faut deux pour lancer une partie, et le multiplex n'a rien à montrer tant que personne d'autre ne joue. En ligne, où l'on arrive souvent seul, un salon vide ne servirait à rien. D'où des adversaires artificiels, **dans l'écran d'attente** : un bouton « Ajouter un adversaire », jusqu'à cinq.
 
-Ils n'existent que chez l'**hôte** — c'est son onglet qui les fait jouer — et lui seul voit donc ce bouton. Les autres joueurs ne font aucune différence : un bot entre dans le salon, joue, pénalise ses voisins et se fait éliminer comme n'importe qui.
+**Chacun ouvre sa propre connexion**, depuis le navigateur de celui qui l'ajoute. Le relais ne les distingue pas d'une page ouverte : un bot entre dans le salon, joue, pénalise ses voisins et se fait éliminer comme n'importe qui.
 
-**Ils parlent exactement le langage d'un joueur.** Ils dérivent leur plateau de la graine commune, n'agissent que par les actions d'un joueur au clavier, et émettent leurs instantanés au même rythme qu'un navigateur. L'arbitre ne les distingue pas d'une page ouverte, et c'est tout l'intérêt : ce qu'on exerce ainsi, c'est la vraie chaîne — salon, handicap, multiplex, éliminations — et non une maquette à côté du jeu.
+**Ils parlent exactement le langage d'un joueur.** Ils dérivent leur plateau de la graine commune, n'agissent que par les actions d'un joueur au clavier, et émettent leurs instantanés au même rythme qu'un navigateur. C'est tout l'intérêt : ce qu'on exerce ainsi, c'est la vraie chaîne — salon, handicap, multiplex, éliminations — et non une maquette à côté du jeu.
 
 Ils vivent sur **la même image que le jeu** : pas de minuterie à eux, pas de second rythme. `src/net/bots.js` reçoit le temps en paramètre depuis la boucle de rendu, exactement comme le moteur. Si l'onglet passe en arrière-plan, ils gèlent avec la partie — ce qui est le comportement souhaitable. C'est aussi ce qui rend leur partie reproductible, donc testable sans attendre (`test/bots.test.js`).
 
-Le plafond de cinq n'est pas arbitraire : ils tournent dans l'onglet de l'hôte, et au-delà c'est sa propre partie qui saccade.
+Le plafond de cinq n'est pas arbitraire : ils tournent dans l'onglet de celui qui les ajoute, et au-delà c'est sa propre partie qui saccade.
 
 Deux réglages vivent dans le code plutôt que dans l'interface, `adresse` (probabilité de bien jouer, défaut `0.9`) et `delai` (millisecondes entre deux actions, défaut `80`).
 
@@ -262,25 +278,27 @@ Deux réglages vivent dans le code plutôt que dans l'interface, `adresse` (prob
 
 **`--adresse` sert aux essais, pas à la difficulté.** À `1` l'IA ne perd jamais : sa pile ne monte pas, donc la caméra ne se porte jamais sur un joueur en difficulté, personne n'est éliminé et aucune partie ne se termine — on ne verrait précisément rien de ce qu'on voulait voir. En dessous, elle se trompe pour de bon : un placement au hasard de temps en temps, avec les trous que cela creuse. À `0.9`, une partie à trois dure une minute et finit par désigner un vainqueur ; à `0.8`, elle est nettement plus courte.
 
-La décision vit dans `src/ai/player.js` : des fonctions pures sur un état de jeu, sans horloge ni réseau, comme le moteur et la caméra. `src/net/bots.js` ne garde que le temps. C'est ce partage qui rend la politique de jeu testable coup par coup (`test/ai.test.js`), ce qu'aucune partie observée ne prouverait — une IA qui joue mal étant très difficile à distinguer d'une IA malchanceuse. Ce découpage a d'ailleurs survécu intact au passage du serveur au navigateur : seul le pilote a été réécrit.
+La décision vit dans `src/ai/player.js` : des fonctions pures sur un état de jeu, sans horloge ni réseau, comme le moteur et la caméra. `src/net/bots.js` ne garde que le temps, et `src/net/bot-client.js` que la connexion. C'est ce partage qui rend la politique de jeu testable coup par coup (`test/ai.test.js`), ce qu'aucune partie observée ne prouverait — une IA qui joue mal étant très difficile à distinguer d'une IA malchanceuse. Ce découpage a survécu intact à deux refontes du réseau : seule la couche de connexion a changé.
 
 Une dernière chose que l'IA ne sait pas faire : **viser une colonne sous un surplomb**. Y glisser une pièce demanderait de simuler les rotations avec leurs décalages, et le handicap en crée justement. Le pilote tranche plus simplement — s'il pousse deux fois sans que rien ne bouge, il lâche la pièce là où elle est. Une pièce mal posée de loin en loin est un défaut d'IA, pas un blocage.
 
-### La seule dépendance, et elle est copiée
+### Déployer le relais
 
-`vendor/trystero-nostr.js` est [Trystero](https://github.com/dmotz/trystero) (`@trystero-p2p/nostr`), qui établit les connexions WebRTC. 62 Ko, un seul fichier, aucun import à résoudre : il s'utilise tel quel dans un `<script type="module">`, ce qui laisse le projet **sans étape de construction**.
+Le relais se déploie séparément de la page. Il faut un compte Cloudflare gratuit, une seule fois :
 
-Il est copié dans le dépôt plutôt que chargé depuis un CDN, et c'est délibéré : GitHub Pages le sert lui-même, donc aucun tiers dans le chemin critique du chargement ; un dépôt cloné fonctionne hors ligne ; le fichier est lisible et comparable d'une version à l'autre ; et la version ne peut pas changer sous nos pieds. Le prix est une mise à jour manuelle — l'en-tête du fichier porte la version, l'URL d'origine et la commande pour le rafraîchir.
+```bash
+npx wrangler login     # ouvre le navigateur, une fois pour toutes
+npm run deploy         # publie le relais
+```
 
-Sa surface est confinée à `src/net/peer.js`, qui ne l'importe même pas : `joinRoom` et `selfId` lui sont **injectés** par `main.js`. C'est ce qui permet de tester tout le réseau sous Node, sur un faux maillage de quarante lignes, sans navigateur ni WebRTC.
+La commande affiche l'adresse obtenue, de la forme `https://tetris-relais.<sous-domaine>.workers.dev`. Reportez-la dans `src/net/relais.js` (en `wss://`), puis poussez la page.
 
-Attention en cas de rafraîchissement : l'API de la 0.25 diffère de ce que documente le README d'amont. `makeAction` renvoie un objet et non un couple, `onMessage` / `onPeerJoin` / `onPeerLeave` s'**assignent** au lieu de s'appeler, et `send` prend `{ target }` et non l'identifiant du pair — cette dernière erreur ne lève rien, le message part simplement à tout le monde. Les trois sont absorbées au même endroit, en tête de `src/net/peer.js`.
+Le palier gratuit suffit très largement, et surtout **il ne met rien en veille** : il n'y a pas de démarrage à froid à subir avant la première partie.
 
 ### Ce qui reste à faire
 
-- **Migration de l'hôte** : s'il quitte en cours de partie, la partie s'arrête. Assumé, faute d'un moyen honnête de transférer le décompte des éliminations.
-- **Relais TURN** : rien n'est prévu pour les réseaux qui refusent la connexion directe. Il faudrait héberger un relais, c'est-à-dire renoncer à ce qui fait l'intérêt de l'approche.
-- **Reconnexion** : un joueur qui part est éliminé, et ne peut pas revenir.
+- **Reconnexion** : un joueur qui part est éliminé, et ne peut pas revenir. Le relais perd aussi son salon s'il redémarre, ce qui met fin aux parties en cours.
+- **Rien n'authentifie un joueur** : le relais croit les messages qu'il reçoit, sauf l'identifiant, qu'il attribue lui-même. Entre amis, cela suffit.
 - **La pause est locale** : elle arrête son propre plateau sans arrêter celui de l'adversaire. À deux, c'est un avantage indu — il faudra soit la mettre en commun, soit l'interdire en réseau.
 
 ## Musique

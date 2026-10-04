@@ -1,22 +1,20 @@
 /**
  * L'arbitre de la partie, sans reseau.
  *
- * En pair-a-pair il n'y a plus de serveur, mais il reste quatre decisions qui
- * demandent qu'une seule machine tranche : qui est dans le salon, avec quelle
- * graine, quand on part, et qui l'emporte. C'est l'hote qui s'en charge — un
- * navigateur comme les autres, elu parmi les pairs (voir elire).
+ * Quatre decisions demandent qu'une seule machine tranche : qui est dans le
+ * salon, avec quelle graine, quand on part, et qui l'emporte. Les voici, et
+ * elles ne connaissent aucune regle de Tetris.
  *
- * Ce fichier est le portage de l'ancien serveur, moins le reseau : les
- * gestionnaires ne poussent plus rien dans des sockets, ils renvoient les
- * messages a emettre. C'est ce qui le rend entierement testable sous
- * `node --test`, ce que l'ancien serveur n'etait qu'a moitie, et ce qui permet a
- * net/peer.js de router de la meme facon un message venu d'un pair, de l'hote
- * lui-meme ou d'un adversaire artificiel : un seul chemin, aucune duplication.
+ * Ce fichier ne touche pas au reseau : les gestionnaires ne poussent rien dans
+ * des sockets, ils **renvoient** les messages a emettre. C'est ce qui le rend
+ * entierement testable sous `node --test` — ce que l'ancien serveur n'etait
+ * qu'a moitie — et ce qui lui permet de tourner tel quel dans un Worker
+ * Cloudflare, qui n'a ni Node ni `ws` : voir worker/salon.js, qui se contente
+ * de le brancher sur des WebSockets.
  *
- * Ce qui a disparu au passage : le relais des actions et des instantanes. Le
- * handicap et les plateaux vont desormais d'un pair a l'autre en direct, sans
- * detour par l'hote, parce qu'aucun ordre n'a besoin d'etre impose — voir
- * net/transport.js pour la raison.
+ * Ce qui ne passe pas par ici : le handicap et les instantanes de plateau. Ils
+ * n'ont aucune decision a demander, et le relais se contente de les transmettre
+ * aux autres joueurs.
  */
 
 import { randomSeed } from '../engine/rng.js';
@@ -27,35 +25,14 @@ import { alive, begin, closeRoom, createLobby, eliminate, join, leave, roomOf, w
  * Un message et son destinataire.
  *
  * `to` vaut '*' pour tout le salon, emetteur compris, ou l'identifiant d'un
- * joueur. C'est a l'appelant de savoir si cet identifiant designe un pair du
- * reseau, lui-meme, ou un adversaire artificiel : l'arbitre l'ignore, et c'est
- * precisement ce qui lui permet de les traiter tous pareil.
+ * joueur. L'arbitre ne sait rien de ce que cet identifiant designe — un onglet,
+ * un adversaire artificiel — et c'est ce qui lui permet de les traiter pareil.
  *
  * @typedef {{ to: string, message: object }} Envelope
  */
 
 /** Destinataire valant « tout le salon, emetteur compris ». */
 export const TOUS = '*';
-
-/**
- * Designe l'arbitre parmi les pairs presents.
- *
- * Le plus petit identifiant, au sens alphabetique. La regle n'a l'air de rien,
- * mais elle a la seule propriete qui compte : chacun la calcule chez soi, sans
- * echanger un message, et tous tombent d'accord. Le maillage etant complet,
- * tout le monde voit le meme ensemble de pairs.
- *
- * @param {string[]} ids identifiants presents, le sien compris
- * @returns {string | null} l'hote, ou null si personne n'est la
- */
-export function elire(ids) {
-  let hote = null;
-  for (const id of ids) {
-    if (typeof id !== 'string') continue;
-    if (hote === null || id < hote) hote = id;
-  }
-  return hote;
-}
 
 /**
  * @param {{ seed?: () => number, min?: number, code?: string }} options
@@ -131,7 +108,7 @@ export function createHost({ seed = randomSeed, min = MIN_PLAYERS, code = DEFAUL
     /**
      * Traite un message de joueur et renvoie ce qu'il faut emettre.
      *
-     * @param {string} fromId emetteur : un pair, l'hote lui-meme, ou un bot
+     * @param {string} fromId emetteur, tel que le relais l'a identifie
      * @param {object} message un CLIENT.* (join, begin, over)
      * @returns {Envelope[]}
      */
@@ -140,18 +117,18 @@ export function createHost({ seed = randomSeed, min = MIN_PLAYERS, code = DEFAUL
 
       switch (message.type) {
         case CLIENT.JOIN: {
-          // Le code du salon est celui de l'hote : en pair-a-pair, le salon
-          // *est* le point de rendez-vous, et nul ne peut en demander un autre
-          // sans aller ailleurs. Le champ du message ne sert donc a rien ici.
+          // Le code du salon est celui de l'arbitre : un Durable Object par
+          // salon, nomme d'apres son code. Nul ne peut en demander un autre sans
+          // ouvrir une autre connexion, et le champ du message ne sert donc a
+          // rien ici.
           //
           // Le pseudo passe tel quel : c'est le salon qui applique son propre
           // nom par defaut, pour qu'un seul endroit connaisse « Joueur ».
           const result = join(lobby, code, fromId, seed(), message.name);
           lobby = result.lobby;
 
-          // Deja dans le salon. Un JOIN peut se repeter sans faute de personne :
-          // un pair se presente a nouveau quand son election se corrige, et le
-          // reseau peut doubler un message. Le prendre pour un refus ejecterait
+          // Deja dans le salon. Un JOIN peut se repeter sans faute de personne,
+          // le reseau pouvant doubler un message. Le prendre pour un refus ejecterait
           // un joueur deja assis — on lui redit simplement l'etat du salon.
           if (!result.joined && result.room?.players.includes(fromId)) {
             return annonceAttente(result.room);
@@ -191,7 +168,7 @@ export function createHost({ seed = randomSeed, min = MIN_PLAYERS, code = DEFAUL
           return sortie(fromId);
 
         default:
-          // Un pair peut toujours envoyer n'importe quoi : on l'ignore plutot
+          // Un client peut toujours envoyer n'importe quoi : on l'ignore plutot
           // que de lever, comme le fait deja decode().
           return [];
       }
