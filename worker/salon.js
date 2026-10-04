@@ -56,21 +56,27 @@ export class Salon extends DurableObject {
         contenu TEXT NOT NULL
       )
     `);
+
+    this.ctx.storage.sql.exec(
+      'CREATE TABLE IF NOT EXISTS etat (cle TEXT PRIMARY KEY, valeur INTEGER)',
+    );
   }
 
   /**
    * Le numero de la partie en cours dans ce salon.
    *
-   * Retrouve depuis le journal au premier appel : un Durable Object peut etre
-   * reveille froid, et la numerotation ne doit pas recommencer a 1 par-dessus
-   * des parties deja ecrites.
+   * Il est **ecrit**, et non deduit du journal. Le deduire revenait a prendre le
+   * plus grand numero deja consigne, si bien qu'un Durable Object reveille froid
+   * — ce qui arrive a chaque deploiement — reprenait l'ecriture sur la page
+   * precedente : toutes les parties finissaient empilees sur la premiere, et
+   * l'elagage ne supprimait jamais rien.
    */
   partie() {
     if (this.partieCourante == null) {
       const [ligne] = [...this.ctx.storage.sql.exec(
-        'SELECT COALESCE(MAX(partie), 1) AS n FROM journal',
+        "SELECT valeur FROM etat WHERE cle = 'partie'",
       )];
-      this.partieCourante = ligne?.n ?? 1;
+      this.partieCourante = ligne?.valeur ?? 1;
     }
     return this.partieCourante;
   }
@@ -91,7 +97,12 @@ export class Salon extends DurableObject {
   nouvellePartie() {
     this.partieCourante = this.partie() + 1;
     this.ctx.storage.sql.exec(
-      "DELETE FROM journal WHERE partie <= ?",
+      "INSERT INTO etat (cle, valeur) VALUES ('partie', ?) "
+      + 'ON CONFLICT(cle) DO UPDATE SET valeur = excluded.valeur',
+      this.partieCourante,
+    );
+    this.ctx.storage.sql.exec(
+      'DELETE FROM journal WHERE partie <= ?',
       this.partieCourante - PARTIES_GARDEES,
     );
   }
