@@ -163,6 +163,40 @@ describe('rendez-vous et election', () => {
     for (const j of [a, b]) j.transport.close();
   });
 
+  it('reconnait un arbitre legitime dont on ignorait encore le role', async () => {
+    // La decouverte n'arrive pas au meme instant chez tout le monde : on peut
+    // recevoir le verdict d'un hote parfaitement legitime avant d'avoir compris
+    // qu'il l'etait. Jeter ce message laissait un joueur au salon pendant que
+    // les autres jouaient.
+    const maillage = creerMaillage();
+    const a = joueur(maillage, 'a');
+    const b = joueur(maillage, 'b');
+    await delai(RESPIRE);
+
+    // b est invite, et son arbitre est bien a.
+    assert.equal(b.transport.estHote(), false);
+    a.transport.begin();
+    const ouverture = await b.partie;
+
+    assert.ok(ouverture.seed, 'b n a pas recu le depart');
+
+    for (const j of [a, b]) j.transport.close();
+  });
+
+  it('se presente une seule fois au meme arbitre', async () => {
+    const maillage = creerMaillage();
+    const a = joueur(maillage, 'a', { name: 'Ali' });
+    const b = joueur(maillage, 'b', { name: 'Bea' });
+    await delai(RESPIRE);
+
+    // Deux entrees pour deux joueurs : ni doublon, ni « Bea 2 ».
+    const attente = dernier(a.statuts, 'waiting');
+    assert.equal(attente.players, 2);
+    assert.deepEqual([...attente.names].sort(), ['Ali', 'Bea']);
+
+    for (const j of [a, b]) j.transport.close();
+  });
+
   it('cede l arbitrage a un plus petit identifiant', async () => {
     const maillage = creerMaillage();
     const m = joueur(maillage, 'm');

@@ -149,6 +149,14 @@ export function createHost({ seed = randomSeed, min = MIN_PLAYERS, code = DEFAUL
           const result = join(lobby, code, fromId, seed(), message.name);
           lobby = result.lobby;
 
+          // Deja dans le salon. Un JOIN peut se repeter sans faute de personne :
+          // un pair se presente a nouveau quand son election se corrige, et le
+          // reseau peut doubler un message. Le prendre pour un refus ejecterait
+          // un joueur deja assis — on lui redit simplement l'etat du salon.
+          if (!result.joined && result.room?.players.includes(fromId)) {
+            return annonceAttente(result.room);
+          }
+
           if (!result.joined) {
             return [{
               to: fromId,
@@ -216,6 +224,20 @@ export function createHost({ seed = randomSeed, min = MIN_PLAYERS, code = DEFAUL
       // Simple passage dans le salon : ceux qui patientent voient le compte
       // baisser, et rien de plus. Leur attente n'est pas annulee.
       return [...messages, ...annonceAttente(result.room)];
+    },
+
+    /**
+     * Redit l'etat du salon a tout le monde.
+     *
+     * Sert quand un pair apparait : plutot que d'attendre qu'il se presente, on
+     * annonce. Une annonce de trop ne coute rien, une annonce manquante laisse
+     * un joueur devant un salon qu'il croit vide.
+     *
+     * @returns {Envelope[]}
+     */
+    annonce() {
+      const room = lobby.rooms[code];
+      return room && !room.started ? annonceAttente(room) : [];
     },
 
     /** Le salon arbitre, ou null s'il s'est ferme. */

@@ -41,7 +41,7 @@ import { CLIENT, DEFAULT_ROOM, SERVER, decode, encode } from './protocol.js';
  * se proclamerait hote et emettrait une attente qu'il devrait defaire a la
  * seconde suivante.
  */
-const SETTLE_MS = 1200;
+const SETTLE_MS = 4000;
 
 /**
  * Delai au-dela duquel rester seul merite une explication.
@@ -193,6 +193,8 @@ export function createPeerTransport({
   let demarree = false;
   let ferme = false;
   let minuteurSeul = null;
+  /** L arbitre auquel on s est deja presente : on ne se presente pas deux fois. */
+  let presenteA = null;
 
   /** Resolution de start(), tenue jusqu'au START. */
   let resoudre = null;
@@ -419,24 +421,50 @@ export function createPeerTransport({
     if (ferme || demarree) return;
 
     const elu = elire([moiId, ...pairs]);
-    if (elu === hoteId) return;
-
     hoteId = elu;
 
-    if (hoteId === moiId) {
-      host = createHost({ seed, code });
-      // Son propre JOIN passe par le meme chemin que celui des autres.
-      traiterDemande(moiId, { type: CLIENT.JOIN, name });
-      if (bots) {
-        for (const { from, message } of bots.joins()) traiterBot(from, message);
+    if (elu === moiId) {
+      if (!host) {
+        host = createHost({ seed, code });
+        presenteA = moiId;
+        // Son propre JOIN passe par le meme chemin que celui des autres.
+        traiterDemande(moiId, { type: CLIENT.JOIN, name });
+        if (bots) {
+          for (const { from, message } of bots.joins()) traiterBot(from, message);
+        }
+        return;
       }
+
+      // Deja arbitre, et un pair vient d'apparaitre : on lui dit l'etat du
+      // salon sans attendre qu'il se presente. Chacun comptait sur l'autre pour
+      // parler le premier, et deux joueurs restaient face a un salon vide.
+      router(host.annonce());
       return;
     }
 
-    // Un plus petit identifiant est apparu : on cesse d'arbitrer et on se
-    // presente au nouvel hote.
+    // Quelqu'un de plus petit arbitre : on cesse de le faire et on se presente.
     host = null;
-    versPairs({ type: CLIENT.JOIN, name }, hoteId);
+    if (presenteA !== elu) {
+      presenteA = elu;
+      versPairs({ type: CLIENT.JOIN, name }, elu);
+    }
+  }
+
+  /**
+   * Reconnait un pair comme arbitre alors qu'on ne l'avait pas encore elu.
+   *
+   * La decouverte des pairs n'arrive pas au meme instant chez tout le monde : on
+   * peut recevoir le verdict d'un hote parfaitement legitime avant d'avoir
+   * compris qu'il l'etait. Jeter ce message en silence laissait un joueur au
+   * salon pendant que les autres jouaient.
+   */
+  function adopterHote(id) {
+    hoteId = id;
+    host = null;
+    if (presenteA !== id) {
+      presenteA = id;
+      versPairs({ type: CLIENT.JOIN, name }, id);
+    }
   }
 
   return {
@@ -466,10 +494,20 @@ export function createPeerTransport({
             return;
           }
 
-          // Un verdict ne vaut que s'il vient de l'arbitre. Le handicap et les
-          // instantanes, eux, viennent de n'importe quel pair : c'est leur
-          // chemin normal.
-          if (TYPES_DIRECTS.has(message.type) || fromId === hoteId) appliquerArbitre(message);
+          // Le handicap et les instantanes viennent de n'importe quel pair :
+          // c'est leur chemin normal.
+          if (TYPES_DIRECTS.has(message.type)) {
+            appliquerArbitre(message);
+            return;
+          }
+
+          // Un verdict, lui, ne vaut que s'il vient de l'arbitre — sans quoi un
+          // pair pourrait s'inventer vainqueur. Mais notre idee de l'arbitre
+          // peut etre en retard sur la sienne : on refait l'election avec ce
+          // qu'on sait, et si l'emetteur la gagne, on le reconnait plutot que de
+          // le jeter.
+          if (fromId !== hoteId && fromId === elire([moiId, ...pairs])) adopterHote(fromId);
+          if (fromId === hoteId) appliquerArbitre(message);
         });
 
         recevoirEcran((brut) => {

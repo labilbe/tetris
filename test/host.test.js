@@ -92,6 +92,36 @@ describe('entree dans le salon', () => {
     assert.deepEqual(envelopes[0].message.names, ['Joueur']);
   });
 
+  it('redit l etat du salon a qui se presente deux fois', () => {
+    // Un pair se represente quand son election se corrige, et le reseau peut
+    // doubler un message. Le prendre pour un refus ejecterait un joueur assis.
+    const host = salonAvec(['a', 'Ali'], ['b', 'Bea']);
+    const envelopes = host.receive('b', { type: CLIENT.JOIN, name: 'Bea' });
+
+    assert.equal(envelopes.length, 1);
+    assert.equal(envelopes[0].message.type, SERVER.WAITING);
+    assert.equal(envelopes[0].message.players, 2);
+    // Et surtout : pas de doublon dans le salon.
+    assert.deepEqual(envelopes[0].message.names, ['Ali', 'Bea']);
+  });
+
+  it('annonce le salon sans attendre que l arrivant parle', () => {
+    // Chacun comptait sur l'autre pour se presenter, et deux joueurs restaient
+    // face a un salon vide.
+    const host = salonAvec(['a', 'Ali']);
+    const envelopes = host.annonce();
+
+    assert.equal(envelopes.length, 1);
+    assert.equal(envelopes[0].to, TOUS);
+    assert.equal(envelopes[0].message.type, SERVER.WAITING);
+  });
+
+  it('n annonce plus rien une fois la partie lancee', () => {
+    const host = salonAvec(['a', 'Ali'], ['b', 'Bea']);
+    host.receive('a', { type: CLIENT.BEGIN });
+    assert.deepEqual(host.annonce(), []);
+  });
+
   it('refuse l arrivant quand la partie a commence', () => {
     const host = salonAvec(['a', 'Ali'], ['b', 'Bea']);
     host.receive('a', { type: CLIENT.BEGIN });
