@@ -1,6 +1,6 @@
 # Tetris
 
-Un Tetris jouable dans le navigateur, en HTML/Canvas et JavaScript vanilla. Aucun build et **aucune dépendance d'exécution**. La page est un paquet de fichiers statiques ; seul le multijoueur demande un relais, et c'est un unique fichier de cent lignes.
+Un Tetris jouable dans le navigateur, en HTML/Canvas et JavaScript vanilla. Aucun build et **aucune dépendance d'exécution**. La page est un paquet de fichiers statiques ; seul le multijoueur demande un relais, et c'est un Worker de trois fichiers.
 
 Le moteur de jeu est **pur et déterministe** : il n'accède ni au DOM, ni à l'horloge, ni à `Math.random`. C'est ce qui permet de le tester sous Node, et de donner à tous les joueurs la même suite de pièces.
 
@@ -117,14 +117,15 @@ src/
     camera.js     qui regarde-t-on dans le multiplex, et jusqu'à quand
   main.js       câblage : DOM + horloge + boucle de jeu
 worker/
-  index.js      le relais : lit le code du salon et confie la connexion
-  salon.js      un salon : branche l'arbitre sur des WebSockets
+  index.js      le relais : route le jeu et la lecture du journal
+  salon.js      un salon : branche l'arbitre sur des WebSockets, et consigne
+  registre.js   quelles parties ont eu lieu, et dans quel salon
 test/
   engine.test.js    tests du moteur
   midi.test.js      tests du lecteur MIDI
   protocol.test.js  codes de salon et pseudos
   rooms.test.js     tests des salons
-  host.test.js      tests de l'arbitre et de son élection
+  host.test.js      tests de l'arbitre : salon, graine, verdict
   bots.test.js      tests du pilote des adversaires artificiels
   multiplex.test.js instantané de plateau et caméra
   ai.test.js        décision de l'IA et tirage du handicap
@@ -282,13 +283,48 @@ La décision vit dans `src/ai/player.js` : des fonctions pures sur un état de j
 
 Une dernière chose que l'IA ne sait pas faire : **viser une colonne sous un surplomb**. Y glisser une pièce demanderait de simuler les rotations avec leurs décalages, et le handicap en crée justement. Le pilote tranche plus simplement — s'il pousse deux fois sans que rien ne bouge, il lâche la pièce là où elle est. Une pièce mal posée de loin en loin est un défaut d'IA, pas un blocage.
 
+### Le journal des parties
+
+**Le relais consigne tout ce qu'il voit**, horodaté, salon par salon : arrivées, départs, lancement, graine, handicaps, éliminations, verdicts, et les erreurs qu'il renvoie. C'est actif par défaut et il n'y a rien à déclencher — un journal qu'il faut penser à activer n'est jamais là le jour où l'on en a besoin.
+
+Les instantanés de plateau en sont exclus : cinq par seconde et par joueur, ils noieraient tout ce qui se lit, et ils n'expliquent rien.
+
+La lecture demande un jeton, posé une fois :
+
+```bash
+npx wrangler secret put JOURNAL_SECRET
+```
+
+Sans secret configuré, personne ne lit — un journal ouvert exposerait les pseudos et les horaires de jeu à qui devine un code de salon.
+
+```
+/journal?jeton=…                      les 20 dernières parties, tous salons
+/journal?salon=CASA&jeton=…           la dernière partie de ce salon
+/journal?salon=CASA&partie=3&jeton=…  une partie précise
+```
+
+La première adresse sert à retrouver une partie dont on ne se souvient plus du code ; chaque ligne porte le lien vers son journal. Une partie ressemble à ceci :
+
+```
+19:56:59.842 recu  f0e54ae1  {"type":"join","room":"CASA","name":"deicy"}
+19:56:59.843 emis  —         {"pour":"tous","type":"waiting","players":2,"names":["deicy","franck"]}
+19:57:00.155 emis  f0e54ae1  {"pour":"f0e54ae1","type":"start","seed":2224352997,…}
+19:57:00.558 recu  4efa8724  {"type":"action","action":{"type":"garbage","columns":[2,5,7]}}
+19:57:00.867 emis  —         {"pour":"tous","type":"finished","winner":"4efa8724…"}
+```
+
+Chaque salon garde ses vingt dernières parties, et s'élague tout seul.
+
+**Ce que le journal ne peut pas faire :** rejouer un plateau pièce par pièce. Les touches ne traversent jamais le réseau — c'est ce qui rend le jeu instantané — si bien que le relais ignore tout des mouvements de chacun. Il raconte l'histoire du salon, pas celle d'une partie.
+
 ### Déployer le relais
 
 Le relais se déploie séparément de la page. Il faut un compte Cloudflare gratuit, une seule fois :
 
 ```bash
-npx wrangler login     # ouvre le navigateur, une fois pour toutes
-npm run deploy         # publie le relais
+npx wrangler login                      # ouvre le navigateur, une fois pour toutes
+npx wrangler secret put JOURNAL_SECRET  # le jeton de lecture du journal
+npm run deploy                          # publie le relais
 ```
 
 La commande affiche l'adresse obtenue, de la forme `https://tetris-relais.<sous-domaine>.workers.dev`. Reportez-la dans `src/net/relais.js` (en `wss://`), puis poussez la page.

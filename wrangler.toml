@@ -15,11 +15,21 @@ compatibility_date = "2025-09-01"
 name = "SALONS"
 class_name = "Salon"
 
+# Le registre, unique : il sait quelles parties ont eu lieu, et dans quel salon.
+# Sans lui il faudrait se souvenir du code pour relire un journal.
+[[durable_objects.bindings]]
+name = "REGISTRE"
+class_name = "Registre"
+
 # SQLite plutot que l'ancien stockage : c'est la seule forme de Durable Object
-# ouverte au palier gratuit.
+# ouverte au palier gratuit, et elle donne le SQL dont le journal a besoin.
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["Salon"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["Registre"]
 
 [observability]
 enabled = true
