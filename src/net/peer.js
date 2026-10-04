@@ -211,15 +211,37 @@ export function createPeerTransport({
     }
   }
 
-  /** Emet un message vers un pair, ou vers tous si `to` vaut TOUS. */
+  /**
+   * Emet un message vers un pair, ou vers tous si `to` vaut TOUS.
+   *
+   * On ne filtre surtout pas sur notre propre liste de pairs. Elle peut etre en
+   * retard sur la bibliotheque — un pair nous a deja ecrit sans que son arrivee
+   * nous ait ete signalee — et un message retenu ici ne part jamais, sans que
+   * rien ne le signale. C'est ainsi qu'un hote a pu afficher les deux joueurs
+   * pendant que l'autre, n'ayant jamais recu sa reponse, se croyait seul.
+   *
+   * Laisser partir un message vers un pair absent ne coute rien : l'envoi est
+   * asynchrone et son echec est deja avale.
+   */
   function versPairs(message, to = TOUS) {
     if (!envoyer) return;
     const brut = encode(message);
-    if (to === TOUS) {
-      if (pairs.size > 0) envoyer(brut);
-      return;
-    }
-    if (pairs.has(to)) envoyer(brut, to);
+    if (to === TOUS) envoyer(brut);
+    else envoyer(brut, to);
+  }
+
+  /**
+   * Prend acte d'un pair qui nous parle.
+   *
+   * Recevoir un message de lui prouve la connexion mieux que n'importe quelle
+   * annonce : on l'inscrit donc sans attendre, et on refait l'election, qui peut
+   * en dependre.
+   */
+  function noterPair(fromId) {
+    if (!fromId || pairs.has(fromId)) return;
+    pairs.add(fromId);
+    arreterMinuteurSeul();
+    arbitrer();
   }
 
   /** Les identifiants des adversaires artificiels, s'il y en a. */
@@ -488,6 +510,8 @@ export function createPeerTransport({
           const message = decode(brut);
           if (!message) return;
 
+          noterPair(fromId);
+
           // Une demande adressee a l'arbitre : elle n'a de sens que chez lui.
           if (TYPES_DEMANDE.has(message.type)) {
             traiterDemande(fromId, message);
@@ -510,9 +534,11 @@ export function createPeerTransport({
           if (fromId === hoteId) appliquerArbitre(message);
         });
 
-        recevoirEcran((brut) => {
+        recevoirEcran((brut, fromId) => {
           const message = decode(brut);
-          if (message) appliquerArbitre(message);
+          if (!message) return;
+          noterPair(fromId);
+          appliquerArbitre(message);
         });
 
         brancher(room, 'onPeerJoin', (peerId) => {

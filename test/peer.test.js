@@ -24,7 +24,7 @@ const delai = (ms) => new Promise((r) => { setTimeout(r, ms); });
  * memoire. Les arrivees sont annoncees sur une micro-tache, comme le vrai, pour
  * que les ecouteurs soient en place quand elles tombent.
  */
-function creerMaillage() {
+function creerMaillage({ sourds = [] } = {}) {
   /** @type {Map<string, Map<string, object>>} */
   const salons = new Map();
 
@@ -44,8 +44,10 @@ function creerMaillage() {
         queueMicrotask(() => {
           for (const [autreId, autre] of gens) {
             if (autreId === selfId) continue;
-            moi.salle?.onPeerJoin?.(autreId);
-            autre.salle?.onPeerJoin?.(selfId);
+            // Un « sourd » n'est jamais prevenu d'une arrivee. Les messages, eux,
+            // lui parviennent : c'est l'asymetrie observee en vrai.
+            if (!sourds.includes(selfId)) moi.salle?.onPeerJoin?.(autreId);
+            if (!sourds.includes(autreId)) autre.salle?.onPeerJoin?.(selfId);
           }
         });
 
@@ -158,6 +160,24 @@ describe('rendez-vous et election', () => {
       assert.ok(attente, `${j.selfId} n a pas vu le salon`);
       assert.equal(attente.players, 2);
       assert.deepEqual([...attente.names].sort(), ['Ali', 'Bea']);
+    }
+
+    for (const j of [a, b]) j.transport.close();
+  });
+
+  it('repond a un pair dont l arrivee ne nous a jamais ete annoncee', async () => {
+    // Le cas observe en vrai : l'hote avait recu le JOIN du telephone sans que
+    // son arrivee lui soit signalee. Il affichait donc les deux joueurs, tandis
+    // que sa reponse etait jetee avant de partir — et l'autre se croyait seul.
+    const maillage = creerMaillage({ sourds: ['a'] });
+    const a = joueur(maillage, 'a', { name: 'Ali' });
+    const b = joueur(maillage, 'b', { name: 'Bea' });
+    await delai(RESPIRE);
+
+    for (const j of [a, b]) {
+      const attente = dernier(j.statuts, 'waiting');
+      assert.ok(attente, `${j.selfId} n a jamais vu le salon`);
+      assert.equal(attente.players, 2, `${j.selfId} se croit seul`);
     }
 
     for (const j of [a, b]) j.transport.close();
