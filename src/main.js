@@ -8,6 +8,7 @@ import { STATUS } from './engine/constants.js';
 import { createState, reduce, tick } from './engine/state.js';
 import { createKeyboardInput } from './input/keyboard.js';
 import { createTouchInput } from './input/touch.js';
+import { attendus, messageAttente, noter, oublier } from './net/absences.js';
 import { createBotClients } from './net/bot-client.js';
 import { drawGarbageColumns } from './net/garbage.js';
 import { relaisUrl } from './net/relais.js';
@@ -173,7 +174,23 @@ function commandeCamera(type) {
 function dispatch(action) {
   if (!transport) return; // encore au menu : il n'y a pas de partie a piloter
   if (outcome) return; // la partie en reseau est jouee, le verdict est tombe
+  // Partie gelee : ni la notre ni celle des autres n'avance. Figer la seule
+  // gravite ne suffisait pas — une chute rapide pose une piece et en appelle
+  // une autre, ce qui est bel et bien jouer.
+  if (gelee()) return;
   transport.send(action);
+}
+
+/**
+ * La partie est-elle gelee ?
+ *
+ * Deux raisons, une seule consequence : notre propre connexion est tombee, ou
+ * l'on attend celle d'un autre. Dans les deux cas le handicap ne circule plus,
+ * et celui qui continuerait a jouer prendrait une avance que l'autre ne peut
+ * pas disputer.
+ */
+function gelee() {
+  return coupure || geleParAbsence;
 }
 
 function render() {
@@ -192,13 +209,17 @@ function render() {
 }
 
 function loop(time) {
+  // L'attente d'un joueur coupe se relit a chaque image : son decompte avance,
+  // et son echeance peut tomber sans qu'aucun message n'arrive.
+  majAttente(time);
+
   // Premiere frame : pas de delta de reference, on se contente d'amorcer.
   const delta = lastTime === null ? 0 : time - lastTime;
   lastTime = time;
 
   // Pas de partie en cours (menu, attente, verdict tombe) : le temps ne doit
   // pas avancer, sinon les pieces tomberaient derriere l'ecran affiche.
-  if (state && transport && !outcome && !coupure) {
+  if (state && transport && !outcome && !gelee()) {
     state = tick(state, delta);
     render();
 
@@ -216,8 +237,9 @@ function loop(time) {
 
   // Les adversaires artificiels avancent sur la meme image que le jeu : pas de
   // seconde horloge, et ils gelent avec la partie quand l onglet passe en
-  // arriere-plan.
-  botClients?.tick(time);
+  // arriere-plan. Le gel les arrete aussi : ils tournent dans cet onglet-ci,
+  // et les laisser jouer seuls reviendrait a ne geler personne.
+  if (!gelee()) botClients?.tick(time);
 
   requestAnimationFrame(loop);
 }
@@ -226,6 +248,17 @@ function loop(time) {
 let botClients = null;
 /** Connexion perdue en pleine partie : le plateau est fige en attendant. */
 let coupure = false;
+/**
+ * Les autres joueurs coupes, et jusqu'a quand on les attend.
+ *
+ * Tant qu'il en reste un, la partie est gelee pour tout le monde : voir
+ * net/absences.js, qui dit pourquoi.
+ *
+ * @type {Map<string, number>}
+ */
+let absences = new Map();
+/** Le gel est-il affiche ? Retenu pour ne toucher a l'ecran qu'aux bascules. */
+let geleParAbsence = false;
 
 /**
  * Le code du salon : le point de rendez-vous des joueurs.
@@ -251,6 +284,44 @@ function afficherSalon(code) {
   const url = new URL(location.href);
   url.searchParams.set('salon', code);
   history.replaceState(null, '', url);
+}
+
+/**
+ * Relit la liste des joueurs attendus, et gele ou degele la partie.
+ *
+ * Appelee a chaque image plutot qu'a la reception des messages : le decompte
+ * affiche doit avancer, et surtout l'echeance peut tomber toute seule — si le
+ * verdict du relais se perdait, une partie gelee pour toujours serait pire que
+ * tout ce qu'on cherche a eviter ici.
+ */
+function majAttente(maintenant) {
+  // Notre propre coupure occupe deja cet ecran, et elle passe avant : on ne
+  // va pas annoncer qu'on attend les autres quand ce sont eux qui nous
+  // attendent. Verdict tombe, il n'y a plus de partie a geler.
+  const fini = outcome === 'won' || outcome === 'lost';
+  const liste = estMulti && transport && !coupure && !fini ? attendus(absences, maintenant) : [];
+
+  if (liste.length > 0) {
+    waitingText.textContent = messageAttente(liste, salon.names);
+    if (geleParAbsence) return;
+
+    geleParAbsence = true;
+    waiting.hidden = false;
+    waitingBegin.hidden = true;
+    waitingBot.hidden = true;
+    // Copier le lien n'a plus de sens : la partie est commencee, et le salon
+    // n'accueille plus personne.
+    waitingCopier.hidden = true;
+    return;
+  }
+
+  if (!geleParAbsence) return;
+
+  geleParAbsence = false;
+  waiting.hidden = true;
+  waitingCopier.hidden = false;
+  // Le temps passe gele ne doit pas tomber d'un coup sur le plateau.
+  lastTime = null;
 }
 
 /** Messages du serveur qui concernent l'attente et la connexion, pas le jeu. */
@@ -283,13 +354,16 @@ function onNetworkStatus(status) {
       lastTime = null;
       break;
 
-    // Un autre joueur est coupe : on le dit sans rien arreter, sa place est
-    // gardee et la partie continue entre les presents.
+    // Un autre joueur est coupe : sa place est gardee, et la partie s'arrete
+    // pour tout le monde en attendant son retour. Voir net/absences.js : une
+    // partie qui continue sans lui est deja decidee quand il revient.
     case 'away':
+      absences = noter(absences, status.playerId, status.secondes, performance.now());
       if (rivaux.has(status.playerId)) rivaux.get(status.playerId).absent = true;
       break;
 
     case 'back':
+      absences = oublier(absences, status.playerId);
       if (rivaux.has(status.playerId)) rivaux.get(status.playerId).absent = false;
       break;
 
@@ -323,6 +397,9 @@ function onNetworkStatus(status) {
       salon = { players: status.players, names: status.names ?? {} };
       break;
     case 'eliminated':
+      // Le relais a tranche : celui qu'on attendait n'est plus de la partie, et
+      // la partie repart sans lui.
+      absences = oublier(absences, status.playerId);
       if (status.self) outcome = 'eliminated';
       // Un joueur sorti n'a plus de plateau a montrer : la camera l'ignore.
       if (rivaux.has(status.playerId)) rivaux.get(status.playerId).vivant = false;
@@ -331,12 +408,16 @@ function onNetworkStatus(status) {
       break;
     case 'finished':
       // Il ne reste qu'un joueur en jeu : c'est lui qui l'emporte.
+      absences = new Map();
       outcome = status.self ? 'won' : 'lost';
       remaining.textContent = status.winner ? '1' : '0';
       render();
       break;
     case 'left':
-      // Rien a faire : un depart en cours de partie vaut elimination, et c'est
+      // Parti pour de bon : on cesse de l'attendre. L'elimination est deja
+      // arrivee par son propre message, et c'est elle qui decide de la suite.
+      absences = oublier(absences, status.playerId);
+      // Rien d'autre a faire : un depart en cours de partie vaut elimination, et c'est
       // l'arbitre qui en tire les consequences. Renvoyer les autres au menu
       // arreterait une partie a plusieurs qui doit continuer.
       break;
@@ -396,6 +477,8 @@ function showMenu(message = '') {
   // Le multiplex appartient a la partie qui s'acheve : rien n'en survit.
   estMulti = false;
   coupure = false;
+  absences = new Map();
+  geleParAbsence = false;
   moiId = null;
   salon = { players: [], names: {} };
   rivaux.clear();

@@ -136,6 +136,7 @@ src/
     bot-client.js chaque adversaire, branché sur le relais
     snapshot.js   instantané de plateau : ce que les autres voient de notre partie
     garbage.js    tirage des colonnes de handicap, côté émetteur
+    absences.js   qui l'on attend après une coupure, et jusqu'à quand
   view/
     preferences.js réglages locaux (projection, musique, pseudo, salon)
     camera.js     qui regarde-t-on dans le multiplex, et jusqu'à quand
@@ -154,6 +155,7 @@ test/
   bots.test.js      tests du pilote des adversaires artificiels
   multiplex.test.js instantané de plateau et caméra
   ai.test.js        décision de l'IA et tirage du handicap
+  absences.test.js  gel de la partie pendant la coupure d'un joueur
   installation.test.js  bouton d'installation, et fichiers mis en cache
 ```
 
@@ -254,7 +256,13 @@ Une connexion perdue **n'est pas un abandon**. On ne peut pas distinguer celui q
 
 Le joueur coupé garde donc sa place **trente secondes**. Son plateau se fige — continuer à jouer sans pouvoir recevoir de handicap serait un avantage indu — et un compte à rebours s'affiche pendant que le navigateur se rebranche, une fois par seconde. Son identifiant, tiré au sort par le relais et dit à lui seul, lui tient lieu de laissez-passer pour reprendre sa place.
 
-Les autres voient qu'il est coupé et continuent de jouer. **Aucun vainqueur n'est désigné dans l'intervalle** : à deux, une coupure ne doit pas faire gagner l'autre par forfait avant l'échéance.
+**La partie s'arrête aussi pour les autres**, le temps qu'il revienne : leur plateau se fige sous « Connexion perdue : la partie attend Neva… 26 s », et ni les touches ni le pavé tactile ne répondent plus. Le jeu se joue au handicap : celui qui est coupé ne peut ni en envoyer ni en recevoir, et trente secondes pendant lesquelles les autres continuent d'empiler des lignes décident la partie à sa place — son retour n'y changerait plus rien. Une partie mise en pause pour tout le monde est la seule qui reste la même pour tout le monde.
+
+Les adversaires artificiels gèlent avec elle : ils tournent dans l'onglet de celui qui les a ajoutés, et les laisser jouer seuls reviendrait à ne geler personne.
+
+**Aucun vainqueur n'est désigné dans l'intervalle** : à deux, une coupure ne doit pas faire gagner l'autre par forfait avant l'échéance.
+
+Le dégel vient du relais — le revenant (BACK) ou son élimination (ELIMINATED) — mais le client garde un filet : passé l'échéance annoncée et trois secondes de marge, il repart de lui-même. Un message perdu ne doit pas geler une partie pour toujours.
 
 Passé le délai, il est éliminé pour de bon, et le jeu le lui dit plutôt que de le laisser devant un écran figé.
 
@@ -377,6 +385,7 @@ Le palier gratuit suffit très largement, et surtout **il ne met rien en veille*
 
 - **Une partie en cours ne survit pas a un salon vide** : si tous les joueurs se coupent en meme temps, le salon se ferme a l echeance et la partie est perdue. Le delai de trente secondes couvre une coupure, pas une panne generale.
 - **Rien n'authentifie un joueur** : le relais croit les messages qu'il reçoit, sauf l'identifiant, qu'il attribue lui-même. Entre amis, cela suffit.
+- **Un joueur au réseau capricieux fige tout le monde** : chaque coupure arrête la partie jusqu'à son retour, et rien ne limite le nombre de fois. C'est le prix d'une partie qui reste la même pour tous ; si cela devenait pénible, il faudrait compter les coupures plutôt que de raccourcir le délai.
 - **La pause est locale** : elle arrête son propre plateau sans arrêter celui de l'adversaire. À deux, c'est un avantage indu — il faudra soit la mettre en commun, soit l'interdire en réseau.
 
 ## Musique
