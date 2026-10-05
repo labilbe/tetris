@@ -197,7 +197,7 @@ function loop(time) {
 
   // Pas de partie en cours (menu, attente, verdict tombe) : le temps ne doit
   // pas avancer, sinon les pieces tomberaient derriere l'ecran affiche.
-  if (state && transport && !outcome) {
+  if (state && transport && !outcome && !coupure) {
     state = tick(state, delta);
     render();
 
@@ -223,6 +223,8 @@ function loop(time) {
 
 /** Les adversaires artificiels de cette partie, chacun avec sa connexion. */
 let botClients = null;
+/** Connexion perdue en pleine partie : le plateau est fige en attendant. */
+let coupure = false;
 
 /**
  * Le code du salon : le point de rendez-vous des joueurs.
@@ -257,6 +259,37 @@ function onNetworkStatus(status) {
     // de laisser un ecran muet, dont on conclurait que le jeu est casse.
     case 'seeking':
       waitingText.textContent = status.message;
+      break;
+
+    // Notre connexion est tombee en pleine partie. Le plateau se fige — on ne
+    // peut plus ni recevoir de handicap ni en envoyer, et continuer a jouer
+    // seul serait un avantage indu — et le compte a rebours s'affiche.
+    case 'coupure':
+      coupure = true;
+      waiting.hidden = false;
+      waitingBegin.hidden = true;
+      waitingBot.hidden = true;
+      waitingCopier.hidden = true;
+      waitingText.textContent = `Connexion perdue. Reconnexion… ${status.secondes} s`;
+      break;
+
+    // Elle est revenue : la partie reprend ou elle en etait.
+    case 'reprise':
+      coupure = false;
+      waiting.hidden = true;
+      waitingCopier.hidden = false;
+      // Le temps passe hors ligne ne doit pas tomber d'un coup sur le plateau.
+      lastTime = null;
+      break;
+
+    // Un autre joueur est coupe : on le dit sans rien arreter, sa place est
+    // gardee et la partie continue entre les presents.
+    case 'away':
+      if (rivaux.has(status.playerId)) rivaux.get(status.playerId).absent = true;
+      break;
+
+    case 'back':
+      if (rivaux.has(status.playerId)) rivaux.get(status.playerId).absent = false;
       break;
 
     case 'waiting': {
@@ -361,6 +394,7 @@ function showMenu(message = '') {
 
   // Le multiplex appartient a la partie qui s'acheve : rien n'en survit.
   estMulti = false;
+  coupure = false;
   moiId = null;
   salon = { players: [], names: {} };
   rivaux.clear();

@@ -199,6 +199,117 @@ describe('eliminations', () => {
   });
 });
 
+describe('coupure et reprise', () => {
+  /** Un salon de trois joueurs, partie lancee. */
+  function enPartie() {
+    const host = salonAvec(['a', 'Ali'], ['b', 'Bea'], ['c', 'Cyr']);
+    host.receive('a', { type: CLIENT.BEGIN });
+    return host;
+  }
+
+  it('garde la place du joueur coupe au lieu de l eliminer', () => {
+    // On ne peut pas distinguer un abandon d'un Wi-Fi qui hoquette : punir le
+    // second pour attraper le premier etait le mauvais compromis.
+    const host = enPartie();
+    const envelopes = host.partir('a');
+
+    assert.equal(envelopes.length, 1);
+    assert.equal(envelopes[0].to, TOUS);
+    assert.equal(envelopes[0].message.type, SERVER.AWAY);
+    assert.equal(envelopes[0].message.playerId, 'a');
+    assert.deepEqual(host.attendus(), ['a']);
+  });
+
+  it('annonce le delai dont dispose le joueur', () => {
+    const host = createHost({ seed: GRAINE, repriseMs: 45000 });
+    for (const [id, nom] of [['a', 'Ali'], ['b', 'Bea']]) {
+      host.receive(id, { type: CLIENT.JOIN, name: nom });
+    }
+    host.receive('a', { type: CLIENT.BEGIN });
+
+    assert.equal(host.partir('a')[0].message.secondes, 45);
+  });
+
+  it('ne designe pas de vainqueur tant qu on attend quelqu un', () => {
+    // A deux, une coupure ne doit pas faire gagner l'autre sur-le-champ.
+    const host = salonAvec(['a', 'Ali'], ['b', 'Bea']);
+    host.receive('a', { type: CLIENT.BEGIN });
+
+    const envelopes = host.partir('a');
+    assert.equal(envelopes[0].message.type, SERVER.AWAY);
+    assert.equal(duType(envelopes, SERVER.FINISHED).length, 0);
+  });
+
+  it('rend sa place a qui revient a temps', () => {
+    const host = enPartie();
+    host.partir('a');
+
+    const { repris, envelopes } = host.reprendre('a');
+    assert.equal(repris, true);
+    assert.equal(envelopes[0].to, TOUS);
+    assert.equal(envelopes[0].message.type, SERVER.BACK);
+    assert.equal(envelopes[0].message.playerId, 'a');
+    assert.deepEqual(host.attendus(), []);
+  });
+
+  it('elimine celui qui n est pas revenu a l echeance', () => {
+    const host = enPartie();
+    host.partir('a');
+
+    const envelopes = host.expirer('a');
+    assert.equal(duType(envelopes, SERVER.ELIMINATED).length, 1);
+    assert.deepEqual(host.attendus(), []);
+  });
+
+  it('ne fait rien a l echeance si le joueur est deja revenu', () => {
+    // Le compte a rebours peut arriver apres la reprise : il ne doit pas
+    // eliminer un joueur assis a sa place.
+    const host = enPartie();
+    host.partir('a');
+    host.reprendre('a');
+
+    assert.deepEqual(host.expirer('a'), []);
+  });
+
+  it('refuse une reprise qu on n attendait pas', () => {
+    // L'identifiant tient lieu de laissez-passer : on ne reprend pas la place
+    // d'un joueur qui ne s'est jamais coupe.
+    const host = enPartie();
+    assert.deepEqual(host.reprendre('b'), { repris: false, envelopes: [] });
+    assert.deepEqual(host.reprendre('inconnu'), { repris: false, envelopes: [] });
+  });
+
+  it('traite une coupure hors partie comme un simple depart', () => {
+    const host = salonAvec(['a', 'Ali'], ['b', 'Bea']);
+    const envelopes = host.partir('b');
+
+    assert.equal(envelopes[0].message.type, SERVER.WAITING);
+    assert.deepEqual(host.attendus(), []);
+  });
+
+  it('ne garde pas la place d un joueur deja elimine', () => {
+    const host = enPartie();
+    host.receive('a', { type: CLIENT.OVER });
+
+    assert.equal(duType(host.partir('a'), SERVER.AWAY).length, 0);
+    assert.deepEqual(host.attendus(), []);
+  });
+
+  it('se laisse ranger et retrouver tel quel', () => {
+    // C'est ce qui fait qu'une partie survit au redemarrage du relais.
+    const host = enPartie();
+    host.partir('a');
+
+    const repris = createHost({ seed: GRAINE, etat: host.etat() });
+    assert.deepEqual(repris.attendus(), ['a']);
+    assert.equal(repris.started(), true);
+    assert.equal(repris.room().players.length, 3);
+
+    // Et le joueur coupe retrouve sa place malgre le redemarrage.
+    assert.equal(repris.reprendre('a').repris, true);
+  });
+});
+
 describe('deconnexion', () => {
   it('vaut elimination en pleine partie', () => {
     const host = salonAvec(['a', 'Ali'], ['b', 'Bea'], ['c', 'Cyr']);

@@ -174,7 +174,7 @@ Chaque joueur ne joue que son propre plateau. Personne ne simule celui d'un autr
 Il n'y a par conséquent **rien à synchroniser, et aucun ordre à imposer**. Ce qui circule se réduit à :
 
 ```
-client -> relais : { type: 'join', room, name }
+client -> relais : { type: 'join', room, name, reprise? }
 client -> relais : { type: 'begin' }
 client -> relais : { type: 'over' }
 client -> relais : { type: 'action', action }      le handicap
@@ -184,6 +184,8 @@ relais -> client : { type: 'waiting', room, players, min, names }
 relais -> client : { type: 'start', seed, playerId, players, names }
 relais -> client : { type: 'eliminated', playerId, remaining }
 relais -> client : { type: 'finished', winner }
+relais -> client : { type: 'away', playerId, secondes }   coupe, place gardee
+relais -> client : { type: 'back', playerId }              revenu
 relais -> client : { type: 'left', playerId }
 relais -> client : { type: 'error', message }
 relais -> autres : { type: 'action', playerId, action }
@@ -217,6 +219,18 @@ C'est aussi la seule action qui s'applique aux *autres* et non à soi : celui qu
 **Un bloc de handicap ne complète jamais une rangée.** Il l'effacerait, donc allégerait la pile de celui qui le subit : un cadeau, pas une gêne. Un bloc dont la colonne visée bouclerait une rangée part donc sur la colonne suivante qui l'accepte — et se perd, plutôt que d'offrir une ligne, dans le cas limite où aucune ne l'accepte.
 
 Corollaire : un handicap ne fait **jamais disparaître de cases** du plateau qui le reçoit. La pile ne peut que monter.
+
+### Quand la connexion tombe
+
+Une connexion perdue **n'est pas un abandon**. On ne peut pas distinguer celui qui ferme son onglet de celui dont le Wi-Fi hoquette, et éliminer sur-le-champ punissait le second pour attraper le premier.
+
+Le joueur coupé garde donc sa place **trente secondes**. Son plateau se fige — continuer à jouer sans pouvoir recevoir de handicap serait un avantage indu — et un compte à rebours s'affiche pendant que le navigateur se rebranche, une fois par seconde. Son identifiant, tiré au sort par le relais et dit à lui seul, lui tient lieu de laissez-passer pour reprendre sa place.
+
+Les autres voient qu'il est coupé et continuent de jouer. **Aucun vainqueur n'est désigné dans l'intervalle** : à deux, une coupure ne doit pas faire gagner l'autre par forfait avant l'échéance.
+
+Passé le délai, il est éliminé pour de bon, et le jeu le lui dit plutôt que de le laisser devant un écran figé.
+
+L'état du salon est rangé dans le stockage à chaque changement, si bien qu'un **redémarrage du relais** — ce qui arrive à chaque déploiement — ne perd plus la partie : les joueurs se reconnectent et la reprennent. C'est le défaut qui a motivé tout ceci : une rotation de secret avait coupé une partie en cours, et le journal l'a montré à la seconde près.
 
 ### Éliminations
 
@@ -333,7 +347,7 @@ Le palier gratuit suffit très largement, et surtout **il ne met rien en veille*
 
 ### Ce qui reste à faire
 
-- **Reconnexion** : un joueur qui part est éliminé, et ne peut pas revenir. Le relais perd aussi son salon s'il redémarre, ce qui met fin aux parties en cours.
+- **Une partie en cours ne survit pas a un salon vide** : si tous les joueurs se coupent en meme temps, le salon se ferme a l echeance et la partie est perdue. Le delai de trente secondes couvre une coupure, pas une panne generale.
 - **Rien n'authentifie un joueur** : le relais croit les messages qu'il reçoit, sauf l'identifiant, qu'il attribue lui-même. Entre amis, cela suffit.
 - **La pause est locale** : elle arrête son propre plateau sans arrêter celui de l'adversaire. À deux, c'est un avantage indu — il faudra soit la mettre en commun, soit l'interdire en réseau.
 

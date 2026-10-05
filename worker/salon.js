@@ -11,13 +11,21 @@
  * autres joueurs — jamais a leur emetteur, qui a deja applique son action chez
  * lui sans attendre personne.
  *
+ * Les coupures
+ * ------------
+ * Une connexion qui tombe n'est pas un abandon. La place du joueur est gardee
+ * trente secondes, les autres sont prevenus, et il reprend la sienne s'il
+ * revient. L'etat du salon est range dans le stockage a chaque changement : un
+ * Durable Object redemarre — ce qui arrive a chaque deploiement — retrouve donc
+ * la partie en cours au lieu de la perdre.
+ *
  * Le journal
  * ----------
  * Tout ce qui entre et sort est consigne, horodate. C'est la lecon du chantier
  * precedent : les pannes de reseau se racontent mal apres coup, et une capture
- * d'ecran ne dit jamais quel message est parti, ni quand. Le journal, lui, le
- * dit — et il est la par defaut, sans que personne ait rien a activer au moment
- * ou le probleme survient, c'est-a-dire toujours trop tard.
+ * d'ecran ne dit jamais quel message est parti, ni quand. Il est la par defaut,
+ * sans que personne ait rien a activer au moment ou le probleme survient,
+ * c'est-a-dire toujours trop tard.
  *
  * Les instantanes de plateau en sont exclus : cinq par seconde et par joueur,
  * ils noieraient tout ce qui se lit, et ils n'expliquent rien.
@@ -26,7 +34,7 @@
 import { DurableObject } from 'cloudflare:workers';
 
 import { TOUS, createHost } from '../src/net/host.js';
-import { CLIENT, SERVER, decode, encode } from '../src/net/protocol.js';
+import { CLIENT, REPRISE_MS, SERVER, decode, encode } from '../src/net/protocol.js';
 
 /** Au-dela, les parties les plus anciennes s'effacent de ce salon. */
 const PARTIES_GARDEES = 20;
@@ -42,6 +50,8 @@ export class Salon extends DurableObject {
     this.sockets = new Map();
     /** @type {Map<string, string>} */
     this.pseudos = new Map();
+    /** Comptes a rebours des joueurs coupes. @type {Map<string, number>} */
+    this.minuteurs = new Map();
     /** @type {ReturnType<typeof createHost> | null} */
     this.host = null;
     this.code = null;
@@ -58,26 +68,48 @@ export class Salon extends DurableObject {
     `);
 
     this.ctx.storage.sql.exec(
-      'CREATE TABLE IF NOT EXISTS etat (cle TEXT PRIMARY KEY, valeur INTEGER)',
+      'CREATE TABLE IF NOT EXISTS etat (cle TEXT PRIMARY KEY, valeur TEXT)',
+    );
+  }
+
+  /** Une valeur rangee, ou null. */
+  lire(cle) {
+    const [ligne] = [...this.ctx.storage.sql.exec('SELECT valeur FROM etat WHERE cle = ?', cle)];
+    return ligne ? JSON.parse(ligne.valeur) : null;
+  }
+
+  ecrire(cle, valeur) {
+    this.ctx.storage.sql.exec(
+      'INSERT INTO etat (cle, valeur) VALUES (?, ?) '
+      + 'ON CONFLICT(cle) DO UPDATE SET valeur = excluded.valeur',
+      cle, JSON.stringify(valeur),
     );
   }
 
   /**
-   * Le numero de la partie en cours dans ce salon.
+   * L'arbitre du salon, retrouve tel qu'il etait.
    *
-   * Il est **ecrit**, et non deduit du journal. Le deduire revenait a prendre le
-   * plus grand numero deja consigne, si bien qu'un Durable Object reveille froid
-   * — ce qui arrive a chaque deploiement — reprenait l'ecriture sur la page
-   * precedente : toutes les parties finissaient empilees sur la premiere, et
-   * l'elagage ne supprimait jamais rien.
+   * C'est ce qui fait qu'une partie survit au redemarrage du relais : sans cela,
+   * un deploiement effacait le salon, et les joueurs qui se reconnectaient
+   * tombaient sur un salon vide ou sur un refus.
    */
-  partie() {
-    if (this.partieCourante == null) {
-      const [ligne] = [...this.ctx.storage.sql.exec(
-        "SELECT valeur FROM etat WHERE cle = 'partie'",
-      )];
-      this.partieCourante = ligne?.valeur ?? 1;
+  arbitre() {
+    if (!this.host) {
+      this.host = createHost({ code: this.code, etat: this.lire('arbitre') });
+      this.pseudos = new Map(this.lire('pseudos') ?? []);
     }
+    return this.host;
+  }
+
+  /** Range l'etat de l'arbitre : il doit survivre a un reveil froid. */
+  sauver() {
+    this.ecrire('arbitre', this.host.etat());
+    this.ecrire('pseudos', [...this.pseudos]);
+  }
+
+  /** Le numero de la partie en cours dans ce salon. */
+  partie() {
+    if (this.partieCourante == null) this.partieCourante = this.lire('partie') ?? 1;
     return this.partieCourante;
   }
 
@@ -96,11 +128,7 @@ export class Salon extends DurableObject {
   /** Ouvre une nouvelle page de journal, et elague les plus anciennes. */
   nouvellePartie() {
     this.partieCourante = this.partie() + 1;
-    this.ctx.storage.sql.exec(
-      "INSERT INTO etat (cle, valeur) VALUES ('partie', ?) "
-      + 'ON CONFLICT(cle) DO UPDATE SET valeur = excluded.valeur',
-      this.partieCourante,
-    );
+    this.ecrire('partie', this.partieCourante);
     this.ctx.storage.sql.exec(
       'DELETE FROM journal WHERE partie <= ?',
       this.partieCourante - PARTIES_GARDEES,
@@ -118,29 +146,25 @@ export class Salon extends DurableObject {
 
   async fetch(request) {
     const url = new URL(request.url);
-
-    // Le code vient du chemin, pose par le point d'entree.
     this.code = decodeURIComponent(url.pathname.slice(1));
 
     // Lecture du journal : pas une connexion de jeu.
     if (url.searchParams.get('journal') === '1') return this.lireJournal(url);
 
-    if (!this.host) this.host = createHost({ code: this.code });
+    this.arbitre();
 
     const { 0: client, 1: serveur } = new WebSocketPair();
     serveur.accept();
 
     // L'identifiant est attribue ici, et le joueur ne le choisit pas : c'est ce
-    // qui empeche de se faire passer pour un autre.
-    const playerId = crypto.randomUUID();
-    this.sockets.set(playerId, serveur);
-    this.noter('note', playerId, { evenement: 'connexion', joueurs: this.sockets.size });
+    // qui empeche de se faire passer pour un autre. Il tient dans un objet
+    // mutable, car une reprise le remplace par celui du joueur qui revient.
+    const moi = { id: crypto.randomUUID() };
+    this.sockets.set(moi.id, serveur);
+    this.noter('note', moi.id, { evenement: 'connexion', joueurs: this.sockets.size });
 
-    serveur.addEventListener('message', (event) => {
-      this.onMessage(playerId, event.data);
-    });
-
-    const partir = () => this.onClose(playerId);
+    serveur.addEventListener('message', (event) => this.onMessage(moi, event.data));
+    const partir = () => this.onClose(moi.id);
     serveur.addEventListener('close', partir);
     serveur.addEventListener('error', partir);
 
@@ -188,7 +212,7 @@ export class Salon extends DurableObject {
     }
   }
 
-  /** Distribue les enveloppes de l'arbitre. */
+  /** Distribue les enveloppes de l'arbitre, et range ce qu'elles ont change. */
   router(envelopes) {
     for (const { to, message } of envelopes) {
       this.noter('emis', to === TOUS ? null : to, {
@@ -204,9 +228,15 @@ export class Salon extends DurableObject {
 
       if (message.type === SERVER.START) this.departConsigne(message);
       if (message.type === SERVER.FINISHED) {
-        this.auRegistre({ action: 'fin', partie: this.partie(), issue: `vainqueur ${court(message.winner)}` });
+        this.auRegistre({
+          action: 'fin',
+          partie: this.partie(),
+          issue: `vainqueur ${court(message.winner)}`,
+        });
       }
     }
+
+    if (envelopes.length > 0) this.sauver();
   }
 
   /** Le depart d'une partie n'est consigne qu'une fois, pas une par joueur. */
@@ -227,26 +257,76 @@ export class Salon extends DurableObject {
     }
   }
 
-  onMessage(playerId, brut) {
+  /**
+   * Un joueur coupe se represente avant la fin du delai.
+   *
+   * Son identifiant lui tient lieu de laissez-passer : il est tire au sort par
+   * le relais et n'a ete dit qu'a lui. Reprendre sa place revient donc a prouver
+   * qu'on est bien celui qui l'occupait.
+   *
+   * @returns {boolean} vrai si la place a ete reprise
+   */
+  reprise(moi, demande) {
+    const { repris, envelopes } = this.arbitre().reprendre(demande);
+    if (!repris) return false;
+
+    // La socket neuve prend l'identite de l'ancienne : pour l'arbitre comme pour
+    // les autres joueurs, rien n'a change.
+    const socket = this.sockets.get(moi.id);
+    this.sockets.delete(moi.id);
+    moi.id = demande;
+    this.sockets.set(demande, socket);
+
+    this.annulerMinuteur(demande);
+    this.noter('note', demande, { evenement: 'reprise', pseudo: this.pseudos.get(demande) });
+    this.router(envelopes);
+    return true;
+  }
+
+  /** Arme le compte a rebours d'un joueur coupe. */
+  armerMinuteur(playerId) {
+    this.annulerMinuteur(playerId);
+    this.minuteurs.set(playerId, setTimeout(() => {
+      this.minuteurs.delete(playerId);
+      this.noter('note', playerId, { evenement: 'delai de reprise ecoule' });
+      this.router(this.arbitre().expirer(playerId));
+      this.rangerSiVide();
+    }, REPRISE_MS));
+  }
+
+  annulerMinuteur(playerId) {
+    const minuteur = this.minuteurs.get(playerId);
+    if (minuteur !== undefined) {
+      clearTimeout(minuteur);
+      this.minuteurs.delete(playerId);
+    }
+  }
+
+  onMessage(moi, brut) {
     const message = decode(typeof brut === 'string' ? brut : String(brut));
     if (!message) {
-      this.noter('recu', playerId, { evenement: 'message illisible' });
+      this.noter('recu', moi.id, { evenement: 'message illisible' });
       return;
     }
 
     // Les instantanes ne sont pas consignes : cinq par seconde et par joueur,
     // ils noieraient tout ce qui se lit.
-    if (message.type !== CLIENT.BOARD) this.noter('recu', playerId, message);
+    if (message.type !== CLIENT.BOARD) this.noter('recu', moi.id, message);
 
     switch (message.type) {
       case CLIENT.JOIN:
-        this.pseudos.set(playerId, message.name || 'Joueur');
-        this.router(this.host.receive(playerId, message));
+        // Un retour apres coupure reprend la place gardee, au lieu d'entrer
+        // comme un nouveau venu — ce qui lui vaudrait un refus, la partie ayant
+        // commence.
+        if (message.reprise && this.reprise(moi, message.reprise)) return;
+
+        this.pseudos.set(moi.id, message.name || 'Joueur');
+        this.router(this.arbitre().receive(moi.id, message));
         break;
 
       case CLIENT.BEGIN:
       case CLIENT.OVER:
-        this.router(this.host.receive(playerId, message));
+        this.router(this.arbitre().receive(moi.id, message));
         break;
 
       case CLIENT.ACTION:
@@ -254,7 +334,7 @@ export class Salon extends DurableObject {
         // emetteur : celui qui efface les lignes ne se penalise pas, et il a
         // deja applique son action chez lui.
         if (message.action) {
-          this.auxAutres(playerId, { type: SERVER.ACTION, playerId, action: message.action });
+          this.auxAutres(moi.id, { type: SERVER.ACTION, playerId: moi.id, action: message.action });
         }
         break;
 
@@ -262,7 +342,7 @@ export class Salon extends DurableObject {
         // Purement decoratif, et opaque : le relais n'y comprend rien et n'a pas
         // a y comprendre quoi que ce soit.
         if (message.board) {
-          this.auxAutres(playerId, { type: SERVER.BOARD, playerId, board: message.board });
+          this.auxAutres(moi.id, { type: SERVER.BOARD, playerId: moi.id, board: message.board });
         }
         break;
 
@@ -275,25 +355,39 @@ export class Salon extends DurableObject {
     if (!this.sockets.delete(playerId)) return; // deja parti
 
     this.noter('note', playerId, {
-      evenement: 'deconnexion',
+      evenement: 'coupure',
       pseudo: this.pseudos.get(playerId),
       restants: this.sockets.size,
     });
 
-    // Un depart en pleine partie vaut elimination, et peut donc designer un
-    // vainqueur : c'est l'arbitre qui en decide.
-    this.router(this.host.disconnect(playerId));
-    this.pseudos.delete(playerId);
+    const envelopes = this.arbitre().partir(playerId);
+    this.router(envelopes);
 
-    // Salon vide : on repart d'un arbitre neuf, graine comprise, et d'une
-    // nouvelle page de journal. Le Durable Object, lui, peut etre garde en vie
-    // par la plateforme ; sans cela, un salon acheve interdirait la partie
-    // suivante sous le meme code.
-    if (this.sockets.size === 0) {
-      this.host = null;
-      this.departVu = null;
-      this.noter("note", null, { evenement: "salon vide" });
-      this.nouvellePartie();
+    // Sa place est-elle gardee ? Alors on l'attend, et on tranchera a l'echeance.
+    if (envelopes.some((e) => e.message.type === SERVER.AWAY)) {
+      this.armerMinuteur(playerId);
+      return;
     }
+
+    this.pseudos.delete(playerId);
+    this.rangerSiVide();
+  }
+
+  /**
+   * Plus personne, et plus personne a attendre : on repart d'un salon neuf.
+   *
+   * Tant qu'un joueur coupe peut revenir, on ne touche a rien — c'est tout
+   * l'interet du delai.
+   */
+  rangerSiVide() {
+    if (this.sockets.size > 0 || this.arbitre().attendus().length > 0) return;
+
+    this.host = null;
+    this.departVu = null;
+    this.pseudos = new Map();
+    this.ecrire('arbitre', null);
+    this.ecrire('pseudos', []);
+    this.noter('note', null, { evenement: 'salon vide' });
+    this.nouvellePartie();
   }
 }

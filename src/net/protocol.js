@@ -16,7 +16,7 @@
 
 /** Messages du client vers le serveur. */
 export const CLIENT = {
-  JOIN: 'join', // { type, room, name }
+  JOIN: 'join', // { type, room, name, reprise? } — reprise : on revient apres une coupure
   BEGIN: 'begin', // { type } — lancer la partie sans attendre le salon plein
   ACTION: 'action', // { type, action }
   BOARD: 'board', // { type, board } — instantane pour les spectateurs
@@ -31,6 +31,8 @@ export const SERVER = {
   BOARD: 'board', // { type, playerId, board }
   ELIMINATED: 'eliminated', // { type, playerId, remaining }
   FINISHED: 'finished', // { type, winner } — le dernier en jeu l'emporte
+  AWAY: 'away', // { type, playerId, secondes } — coupe, mais attendu
+  BACK: 'back', // { type, playerId } — revenu
   LEFT: 'left', // { type, playerId }
   ERROR: 'error', // { type, message }
 };
@@ -175,3 +177,13 @@ export function randomRoom(alea = Math.random) {
   }
   return code;
 }
+
+/**
+ * Delai laisse a un joueur coupe pour revenir.
+ *
+ * Une connexion qui tombe n'est pas un abandon : un Wi-Fi hoquette, un relais
+ * redemarre, un telephone change d'antenne. Eliminer sur-le-champ punissait un
+ * accident ; attendre indefiniment bloquerait les autres. Trente secondes
+ * laissent le temps de revenir sans faire languir le salon.
+ */
+export const REPRISE_MS = 30000;

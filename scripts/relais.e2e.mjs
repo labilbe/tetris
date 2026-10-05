@@ -97,6 +97,52 @@ verifier(b.dernier('finished')?.winner === departB?.playerId, 'Bea recoit le mem
 
 a.ws.close();
 b.ws.close();
+await attendre(400);
+
+// --- Coupure et reprise -----------------------------------------------------
+// Une connexion qui tombe n'est pas un abandon : la place est gardee le temps
+// de revenir. C'est le scenario qui a motive tout ceci.
+
+console.log('\nCoupure et reprise\n');
+
+const c = joueur('Cyr');
+const d = joueur('Dina');
+await Promise.all([c.pret, d.pret]);
+await attendre(400);
+c.envoyer({ type: 'begin' });
+await attendre(400);
+
+const moiCyr = c.dernier('start')?.playerId;
+verifier(Boolean(moiCyr), 'la partie est lancee');
+
+// Cyr perd sa connexion, sans prevenir.
+c.ws.close();
+await attendre(600);
+
+verifier(d.dernier('away')?.playerId === moiCyr, 'Dina apprend que Cyr est coupe, pas elimine');
+verifier(!d.dernier('finished'), 'aucun vainqueur n est designe dans l intervalle');
+verifier(!d.dernier('eliminated'), 'Cyr n est pas elimine tout de suite');
+
+// Cyr revient, et montre patte blanche avec son identifiant.
+const retour = new WebSocket(`${URL_RELAIS}/?salon=${SALON}`);
+const recusRetour = [];
+retour.addEventListener('message', (e) => recusRetour.push(JSON.parse(e.data)));
+await new Promise((r) => retour.addEventListener('open', r));
+retour.send(JSON.stringify({ type: 'join', room: SALON, name: 'Cyr', reprise: moiCyr }));
+await attendre(600);
+
+const revenu = [...recusRetour].reverse().find((m) => m.type === 'back');
+verifier(revenu?.playerId === moiCyr, 'Cyr reprend sa place');
+verifier(d.dernier('back')?.playerId === moiCyr, 'Dina le voit revenir');
+verifier(!d.dernier('eliminated'), 'et il n a jamais ete elimine');
+
+// Et la partie continue normalement : son handicap arrive toujours.
+retour.send(JSON.stringify({ type: 'action', action: { type: 'garbage', columns: [3] } }));
+await attendre(400);
+verifier(d.dernier('action')?.action.columns.join() === '3', 'sa partie continue : son handicap arrive');
+
+retour.close();
+d.ws.close();
 
 console.log(`\n${echecs === 0 ? 'Tout est passe.' : `${echecs} echec(s).`}`);
 process.exit(echecs === 0 ? 0 : 1);

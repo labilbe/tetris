@@ -18,7 +18,7 @@
  */
 
 import { randomSeed } from '../engine/rng.js';
-import { CLIENT, DEFAULT_ROOM, MIN_PLAYERS, SERVER } from './protocol.js';
+import { CLIENT, DEFAULT_ROOM, MIN_PLAYERS, REPRISE_MS, SERVER } from './protocol.js';
 import { alive, begin, closeRoom, createLobby, eliminate, join, leave, roomOf, waitingStatus } from './rooms.js';
 
 /**
@@ -38,8 +38,22 @@ export const TOUS = '*';
  * @param {{ seed?: () => number, min?: number, code?: string }} options
  *   `seed` est injectable pour que les tests soient reproductibles.
  */
-export function createHost({ seed = randomSeed, min = MIN_PLAYERS, code = DEFAULT_ROOM } = {}) {
-  let lobby = createLobby({ min });
+export function createHost({
+  seed = randomSeed,
+  min = MIN_PLAYERS,
+  code = DEFAULT_ROOM,
+  repriseMs = REPRISE_MS,
+  etat = null,
+} = {}) {
+  let lobby = etat?.lobby ?? createLobby({ min });
+
+  /**
+   * Les joueurs coupes, dont la place est gardee.
+   *
+   * Ils comptent encore comme vivants : c'est voulu. Un salon de deux joueurs
+   * dont l'un se coupe ne doit pas designer un vainqueur avant la fin du delai.
+   */
+  const absents = new Set(etat?.absents ?? []);
 
   /** @returns {Envelope[]} */
   function annonceAttente(room) {
@@ -175,11 +189,63 @@ export function createHost({ seed = randomSeed, min = MIN_PLAYERS, code = DEFAUL
     },
 
     /**
-     * Depart d'un joueur : onglet ferme, ou reseau qui l'a lache.
+     * Coupure d'un joueur : onglet ferme, ou reseau qui l'a lache.
+     *
+     * En pleine partie, elle ne vaut plus elimination immediate. On ne peut pas
+     * distinguer un abandon d'un Wi-Fi qui hoquette, et punir le second pour
+     * attraper le premier etait le mauvais compromis : la place est gardee, les
+     * autres sont prevenus, et c'est `expirer` qui tranchera si personne ne
+     * revient.
+     *
+     * @returns {Envelope[]}
+     */
+    partir(playerId) {
+      const room = roomOf(lobby, playerId);
+
+      if (room?.started && !room.eliminated.includes(playerId)) {
+        absents.add(playerId);
+        return [{
+          to: TOUS,
+          message: { type: SERVER.AWAY, playerId, secondes: Math.round(repriseMs / 1000) },
+        }];
+      }
+
+      return this.disconnect(playerId);
+    },
+
+    /**
+     * Le delai est ecoule : le joueur coupe est elimine pour de bon.
+     *
+     * @returns {Envelope[]}
+     */
+    expirer(playerId) {
+      if (!absents.delete(playerId)) return []; // revenu entre-temps
+      return this.disconnect(playerId);
+    },
+
+    /**
+     * Un joueur coupe se represente avant la fin du delai.
+     *
+     * @returns {{ repris: boolean, envelopes: Envelope[] }}
+     */
+    reprendre(playerId) {
+      if (!absents.delete(playerId)) return { repris: false, envelopes: [] };
+      return { repris: true, envelopes: [{ to: TOUS, message: { type: SERVER.BACK, playerId } }] };
+    },
+
+    /** Les joueurs qu'on attend encore. */
+    attendus() {
+      return [...absents];
+    },
+
+    /**
+     * Retrait definitif : le joueur quitte le salon.
      *
      * @returns {Envelope[]}
      */
     disconnect(playerId) {
+      absents.delete(playerId);
+
       // L'etat du salon est lu avant le retrait : apres, le joueur n'y est plus.
       const started = roomOf(lobby, playerId)?.started ?? false;
 
@@ -220,6 +286,11 @@ export function createHost({ seed = randomSeed, min = MIN_PLAYERS, code = DEFAUL
     /** Le salon arbitre, ou null s'il s'est ferme. */
     room() {
       return lobby.rooms[code] ?? null;
+    },
+
+    /** L'etat complet, pour le ranger et le retrouver apres un redemarrage. */
+    etat() {
+      return { lobby, absents: [...absents] };
     },
 
     /** La partie a-t-elle commence ? Un arrivant tardif se verra refuse. */
