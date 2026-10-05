@@ -18,6 +18,7 @@ import { createLocalTransport } from './net/transport.js';
 import { createRenderer, createRivalRenderer } from './render/canvas.js';
 import { createHud } from './render/hud.js';
 import { DANGER, automatique, cadrer, createCamera, viser } from './view/camera.js';
+import { brancherInstallation, enregistrerServiceWorker } from './view/installation.js';
 import { readPreference, readTextPreference, writePreference } from './view/preferences.js';
 
 const renderer = createRenderer({
@@ -639,3 +640,9 @@ pseudo.addEventListener('input', () => writePreference(PSEUDO_PREFERENCE, pseudo
 
 remplirPseudo();
 remplirSalon();
+
+// Installation : le jeu se met en cache et s'ajoute a l'ecran d'accueil. Tout a
+// la fin, et sans rien attendre — le jeu doit etre jouable avant que le
+// navigateur ait seulement repondu.
+brancherInstallation({ bouton: document.getElementById('install') });
+enregistrerServiceWorker();

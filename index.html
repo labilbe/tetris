@@ -7,6 +7,16 @@
        CSS ne peut y retourner une lettre comme dans le menu. -->
   <title>TETЯIS</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <!-- Le jeu s'installe : le manifeste lui donne son nom, son icone et sa
+       fenetre, et sw.js le met en cache pour qu'il se lance hors ligne. -->
+  <link rel="manifest" href="manifest.webmanifest">
+  <!-- iOS ignore le manifeste : c'est a ces deux balises qu'il reconnait une
+       application a ajouter a l'ecran d'accueil. -->
+  <link rel="apple-touch-icon" href="assets/icone-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="TETЯIS">
+  <!-- La couleur du fond, pour que la barre du systeme s'y fonde. -->
+  <meta name="theme-color" content="#12131a">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -252,7 +262,10 @@
         <button type="button" id="play-solo">Partie solo</button>
         <button type="button" id="play-multi">Multijoueur</button>
       </div>
-      <p class="menu-note">Le multijoueur réunit les joueurs d’un même salon sur la même suite de pièces. Partagez le code, ou le lien : il n’y a rien à installer.</p>
+      <p class="menu-note">Le multijoueur réunit les joueurs d’un même salon sur la même suite de pièces. Partagez le code, ou le lien : qui l’ouvre joue aussitôt.</p>
+      <!-- Caché tant que le navigateur n’a pas dit que l’installation était
+           possible : voir src/view/installation.js. -->
+      <button type="button" id="install" class="menu-install" hidden>Installer le jeu</button>
       <p class="menu-error" id="menu-error" hidden></p>
     </div>
 

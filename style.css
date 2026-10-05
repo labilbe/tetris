@@ -359,6 +359,29 @@ kbd {
   color: var(--muted);
 }
 
+/*
+ * Le bouton d'installation : present, mais en retrait.
+ *
+ * Il ne doit pas concurrencer « Partie solo » et « Multijoueur » — on vient
+ * ici pour jouer, pas pour installer. D'ou le contour seul, comme le bouton
+ * « Auto » du multiplex, et la place sous la note plutot que dans la colonne
+ * des actions.
+ */
+.menu .menu-install {
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 400;
+  background: none;
+  border: 1px solid var(--grid);
+  color: var(--muted);
+}
+
+.menu .menu-install:hover {
+  filter: none;
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .overlay-actions {
   display: flex;
   flex-direction: column;

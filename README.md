@@ -6,7 +6,7 @@ Le moteur de jeu est **pur et déterministe** : il n'accède ni au DOM, ni à l'
 
 ## Jouer
 
-**En ligne, rien à installer :** <https://labilbe.github.io/tetris/>. Solo et multijoueur y fonctionnent tous les deux.
+**En ligne, rien à installer :** <https://labilbe.github.io/tetris/>. Solo et multijoueur y fonctionnent tous les deux. Le jeu s'[installe](#installer) aussi, pour se lancer depuis le bureau et sans réseau.
 
 Pour jouer à plusieurs, partagez le lien du salon — par exemple <https://labilbe.github.io/tetris/?salon=K7M2P>. Qui l'ouvre arrive dans le même salon.
 
@@ -35,6 +35,30 @@ Deux onglets sur cette adresse jouent l'un contre l'autre sans rien déployer. L
 ### Sur téléphone
 
 <https://labilbe.github.io/tetris/>, et c'est le même jeu — multijoueur compris. Le pavé tactile apparaît automatiquement, et la boîte de jeu se met à l'échelle de l'écran.
+
+## Installer
+
+Le jeu est une **application installable** : Chrome, Edge et Android proposent de l'ajouter au bureau ou à l'écran d'accueil, et le menu porte un bouton « Installer le jeu » qui n'apparaît que là où le navigateur le permet. Sur iOS, c'est « Sur l'écran d'accueil » depuis le menu de partage de Safari.
+
+Installé, le jeu s'ouvre dans sa propre fenêtre, sans barre d'adresse, et **se lance sans réseau** : tous ses fichiers sont en cache. Le solo y est entier. Le multijoueur, lui, demande évidemment le relais : hors ligne, il échoue comme il le ferait dans un onglet.
+
+Trois pièces, et rien d'autre :
+
+| Fichier | Rôle |
+| --- | --- |
+| `manifest.webmanifest` | le nom, l'icône, la couleur et la fenêtre de l'application |
+| `sw.js` | le service worker : met les fichiers du jeu en cache, et les sert en premier |
+| `src/view/installation.js` | enregistre le service worker, et branche le bouton du menu |
+
+Le cache porte sa version (`tetris-v1` dans `sw.js`). **Changez-la dès qu'un fichier du jeu change**, sinon les joueurs déjà venus garderont l'ancienne version. Rien n'est jamais remplacé dans un cache en service : le nouveau se remplit à côté et ne prend la main qu'une fois les onglets de l'ancienne version fermés — un onglet qui mélangerait des modules de deux versions tomberait en panne de la façon la plus obscure qui soit.
+
+`sw.js` liste les fichiers à mettre en cache en toutes lettres. C'est le seul endroit fragile du dispositif, et `test/installation.test.js` le surveille : il relit `src/` et `index.html`, et échoue dès qu'un fichier du jeu manque à la liste. Un module oublié donnerait une application qui marche tant qu'il y a du réseau — la panne qui ne se voit jamais en développement.
+
+Les icônes ne sont pas dessinées à la main : elles sortent de `favicon.svg`, redit en coordonnées.
+
+```bash
+npm run icones     # régénère assets/icone-*.png
+```
 
 ## Tester
 
@@ -115,6 +139,7 @@ src/
   view/
     preferences.js réglages locaux (projection, musique, pseudo, salon)
     camera.js     qui regarde-t-on dans le multiplex, et jusqu'à quand
+    installation.js enregistrement du service worker, et bouton « Installer »
   main.js       câblage : DOM + horloge + boucle de jeu
 worker/
   index.js      le relais : route le jeu et la lecture du journal
@@ -129,7 +154,10 @@ test/
   bots.test.js      tests du pilote des adversaires artificiels
   multiplex.test.js instantané de plateau et caméra
   ai.test.js        décision de l'IA et tirage du handicap
+  installation.test.js  bouton d'installation, et fichiers mis en cache
 ```
+
+À la racine, trois fichiers de plus ne servent qu'à l'installation : `manifest.webmanifest`, `sw.js` et `scripts/icones.mjs` (voir [Installer](#installer)).
 
 Trois règles tiennent l'ensemble :
 

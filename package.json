@@ -9,6 +9,7 @@
     "relais": "npx --yes wrangler@4 dev --port 8787 --local",
     "deploy": "npx --yes wrangler@4 deploy",
     "test": "node --test",
+    "icones": "node scripts/icones.mjs",
     "test:relais": "node scripts/relais.e2e.mjs"
   },
   "license": "MIT"
