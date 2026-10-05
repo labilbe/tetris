@@ -136,7 +136,7 @@ src/
     bot-client.js chaque adversaire, branché sur le relais
     snapshot.js   instantané de plateau : ce que les autres voient de notre partie
     garbage.js    tirage des colonnes de handicap, côté émetteur
-    absences.js   qui l'on attend après une coupure, et jusqu'à quand
+    absences.js   qui l'on attend — coupé, ou simplement muet — et jusqu'à quand
   view/
     preferences.js réglages locaux (projection, musique, pseudo, salon)
     camera.js     qui regarde-t-on dans le multiplex, et jusqu'à quand
@@ -155,7 +155,7 @@ test/
   bots.test.js      tests du pilote des adversaires artificiels
   multiplex.test.js instantané de plateau et caméra
   ai.test.js        décision de l'IA et tirage du handicap
-  absences.test.js  gel de la partie pendant la coupure d'un joueur
+  absences.test.js  gel de la partie : coupure annoncée, et joueur devenu muet
   installation.test.js  bouton d'installation, et fichiers mis en cache
 ```
 
@@ -258,11 +258,24 @@ Le joueur coupé garde donc sa place **trente secondes**. Son plateau se fige �
 
 **La partie s'arrête aussi pour les autres**, le temps qu'il revienne : leur plateau se fige sous « Connexion perdue : la partie attend Neva… 26 s », et ni les touches ni le pavé tactile ne répondent plus. Le jeu se joue au handicap : celui qui est coupé ne peut ni en envoyer ni en recevoir, et trente secondes pendant lesquelles les autres continuent d'empiler des lignes décident la partie à sa place — son retour n'y changerait plus rien. Une partie mise en pause pour tout le monde est la seule qui reste la même pour tout le monde.
 
-Les adversaires artificiels gèlent avec elle : ils tournent dans l'onglet de celui qui les a ajoutés, et les laisser jouer seuls reviendrait à ne geler personne.
+Les adversaires artificiels patientent avec elle : ils tournent dans l'onglet de celui qui les a ajoutés, et les laisser jouer seuls reviendrait à ne geler personne. Ils continuent pourtant d'émettre leur plateau — voir ci-dessous : un joueur muet est un joueur absent, et des adversaires rendus muets par le gel feraient s'attendre la partie elle-même.
 
 **Aucun vainqueur n'est désigné dans l'intervalle** : à deux, une coupure ne doit pas faire gagner l'autre par forfait avant l'échéance.
 
 Le dégel vient du relais — le revenant (BACK) ou son élimination (ELIMINATED) — mais le client garde un filet : passé l'échéance annoncée et trois secondes de marge, il repart de lui-même. Un message perdu ne doit pas geler une partie pour toujours.
+
+### Quand un joueur se tait
+
+Il y a plus fréquent qu'une connexion perdue, et le relais n'en voit rien : **l'onglet qui ne tourne plus**. Passé en arrière-plan, téléphone verrouillé, page gelée par le système — la socket tient, le relais n'a donc rien à annoncer, mais le joueur ne joue plus. Son plateau s'arrête sur place pendant que les autres continuent de lui envoyer du handicap. C'est exactement ce qu'une coupure produisait avant le gel, en pire : personne n'est prévenu.
+
+Cela ne se voit que depuis les autres navigateurs, et cela se voit très bien : les **instantanés de plateau** arrivent cinq fois par seconde, et ils cessent. Trois secondes de silence — quinze messages manqués d'affilée — et le joueur est tenu pour absent : la partie se fige comme pour une coupure, sous « Plus de nouvelles de Deicy : la partie attend… 27 s ». L'annonce ne dit pas « connexion perdue » : on n'en sait rien, et ce serait l'explication fausse que tout le monde retiendrait.
+
+Elle repart dès que ses instantanés reviennent. Faute de quoi, **trente secondes** et la partie continue sans lui : personne ne l'éliminera, sa socket tenant toujours, et entre une partie qui ne repart jamais et un joueur enterré pour avoir verrouillé son téléphone, c'est le second qui coûte le moins cher.
+
+Deux conséquences qui n'étaient pas évidentes :
+
+- **On continue d'émettre son plateau pendant qu'on est gelé.** Un instantané n'est plus seulement de l'affichage : c'est la preuve qu'on est là. Se taire pendant qu'on attend quelqu'un ferait croire aux autres qu'on manque aussi, et la partie entière s'attendrait elle-même jusqu'à l'échéance.
+- **Un onglet qui revient ne rattrape pas son retard.** Son horloge a sauté de plusieurs secondes : au-delà d'une seconde entre deux images, ce temps-là n'appartient pas à la partie, et la pièce ne tombe pas jusqu'en bas avant le premier dessin.
 
 Passé le délai, il est éliminé pour de bon, et le jeu le lui dit plutôt que de le laisser devant un écran figé.
 

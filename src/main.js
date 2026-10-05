@@ -8,7 +8,7 @@ import { STATUS } from './engine/constants.js';
 import { createState, reduce, tick } from './engine/state.js';
 import { createKeyboardInput } from './input/keyboard.js';
 import { createTouchInput } from './input/touch.js';
-import { attendus, messageAttente, noter, oublier } from './net/absences.js';
+import { attendus, fusionner, messageAttente, noter, oublier, silencieux } from './net/absences.js';
 import { createBotClients } from './net/bot-client.js';
 import { drawGarbageColumns } from './net/garbage.js';
 import { relaisUrl } from './net/relais.js';
@@ -86,6 +86,16 @@ const SALON_PREFERENCE = 'tetris.salon';
  */
 const BOARD_MS = 200;
 
+/**
+ * Ecart maximal pris en compte entre deux images.
+ *
+ * Un onglet passe en arriere-plan n'est plus anime : a son retour, l'horloge a
+ * saute de plusieurs secondes d'un coup, et la piece tomberait jusqu'en bas
+ * avant le premier dessin. Au-dela d'une seconde, ce n'est plus une image en
+ * retard, c'est une absence : ce temps-la n'appartient pas a la partie.
+ */
+const PAS_MAX = 1000;
+
 function setGhostVisible(visible) {
   renderer.setGhostVisible(visible);
   ghostCheckbox.checked = visible;
@@ -138,7 +148,17 @@ function construireRivaux() {
 
   for (const id of salon.players) {
     if (id === moiId) continue; // on se voit deja en grand
-    rivaux.set(id, { id, name: salon.names[id] ?? 'Joueur', grid: null, hauteur: 0, vivant: true });
+    rivaux.set(id, {
+      id,
+      name: salon.names[id] ?? 'Joueur',
+      grid: null,
+      hauteur: 0,
+      vivant: true,
+      // Date du dernier instantane recu. Elle part a l'heure du depart : un
+      // joueur dont l'onglet est deja gele n'enverra jamais rien, et il faut
+      // bien l'attendre lui aussi.
+      vuA: performance.now(),
+    });
   }
 }
 
@@ -214,7 +234,8 @@ function loop(time) {
   majAttente(time);
 
   // Premiere frame : pas de delta de reference, on se contente d'amorcer.
-  const delta = lastTime === null ? 0 : time - lastTime;
+  const ecart = lastTime === null ? 0 : time - lastTime;
+  const delta = ecart > PAS_MAX ? 0 : ecart;
   lastTime = time;
 
   // Pas de partie en cours (menu, attente, verdict tombe) : le temps ne doit
@@ -222,13 +243,18 @@ function loop(time) {
   if (state && transport && !outcome && !gelee()) {
     state = tick(state, delta);
     render();
+  }
 
-    // Son plateau part vers ceux qui le regardent, a rythme fixe et sans
-    // attendre : en solo, le transport n'en fait rien.
-    if (estMulti && time - dernierInstantane >= BOARD_MS) {
-      dernierInstantane = time;
-      transport.sendBoard(encodeBoard(state));
-    }
+  // Son plateau part vers ceux qui le regardent, a rythme fixe et sans
+  // attendre : en solo, le transport n'en fait rien.
+  //
+  // Il part meme gele, et c'est essentiel : un instantane est devenu la preuve
+  // qu'on joue encore. Se taire pendant qu'on attend quelqu'un ferait croire
+  // aux autres qu'on manque aussi, et la partie entiere s'attendrait elle-meme
+  // jusqu'a l'echeance.
+  if (state && transport && estMulti && !outcome && time - dernierInstantane >= BOARD_MS) {
+    dernierInstantane = time;
+    transport.sendBoard(encodeBoard(state));
   }
 
   // Le multiplex continue de tourner apres sa propre defaite : eliminé, on
@@ -237,9 +263,9 @@ function loop(time) {
 
   // Les adversaires artificiels avancent sur la meme image que le jeu : pas de
   // seconde horloge, et ils gelent avec la partie quand l onglet passe en
-  // arriere-plan. Le gel les arrete aussi : ils tournent dans cet onglet-ci,
-  // et les laisser jouer seuls reviendrait a ne geler personne.
-  if (!gelee()) botClients?.tick(time);
+  // arriere-plan. Le gel les met en attente avec elle : ils tournent dans cet
+  // onglet-ci, et les laisser jouer seuls reviendrait a ne geler personne.
+  botClients?.tick(time, gelee());
 
   requestAnimationFrame(loop);
 }
@@ -299,7 +325,12 @@ function majAttente(maintenant) {
   // va pas annoncer qu'on attend les autres quand ce sont eux qui nous
   // attendent. Verdict tombe, il n'y a plus de partie a geler.
   const fini = outcome === 'won' || outcome === 'lost';
-  const liste = estMulti && transport && !coupure && !fini ? attendus(absences, maintenant) : [];
+  const enJeu = estMulti && transport && !coupure && !fini;
+  // Les deux facons de manquer a la partie : la coupure, que le relais
+  // annonce, et le silence, que lui seul ne peut pas voir.
+  const liste = enJeu
+    ? fusionner(attendus(absences, maintenant), silencieux(listeRivaux(), maintenant))
+    : [];
 
   if (liste.length > 0) {
     waitingText.textContent = messageAttente(liste, salon.names);
@@ -552,6 +583,9 @@ async function startGame(mode) {
 
     rival.grid = lu.grid;
     rival.hauteur = lu.hauteur;
+    // La date du dernier instantane : c'est la seule preuve qu'un joueur dont
+    // la socket tient joue encore vraiment. Voir net/absences.js.
+    rival.vuA = performance.now();
   });
 
   transport.onAction((action, meta) => {

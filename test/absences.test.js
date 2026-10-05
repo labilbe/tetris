@@ -8,7 +8,17 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { MARGE_MS, attendus, messageAttente, noter, oublier } from '../src/net/absences.js';
+import {
+  MARGE_MS,
+  PATIENCE_MS,
+  SILENCE_MS,
+  attendus,
+  fusionner,
+  messageAttente,
+  noter,
+  oublier,
+  silencieux,
+} from '../src/net/absences.js';
 
 describe('joueurs attendus', () => {
   it('ne gele rien quand personne n\'est coupe', () => {
@@ -17,13 +27,13 @@ describe('joueurs attendus', () => {
 
   it('attend celui qui vient d\'etre coupe, et dit combien de temps', () => {
     const absences = noter(new Map(), 'a', 30, 1000);
-    assert.deepEqual(attendus(absences, 1000), [{ playerId: 'a', reste: 30 }]);
-    assert.deepEqual(attendus(absences, 11000), [{ playerId: 'a', reste: 20 }]);
+    assert.deepEqual(attendus(absences, 1000), [{ playerId: 'a', reste: 30, raison: 'coupure' }]);
+    assert.deepEqual(attendus(absences, 11000), [{ playerId: 'a', reste: 20, raison: 'coupure' }]);
   });
 
   it('n\'annonce jamais un decompte negatif', () => {
     const absences = noter(new Map(), 'a', 30, 0);
-    assert.deepEqual(attendus(absences, 31000), [{ playerId: 'a', reste: 0 }]);
+    assert.deepEqual(attendus(absences, 31000), [{ playerId: 'a', reste: 0, raison: 'coupure' }]);
   });
 
   it('cesse d\'attendre passe l\'echeance et sa marge', () => {
@@ -66,7 +76,7 @@ describe('joueurs attendus', () => {
   it('repart a zero quand le meme joueur se coupe une seconde fois', () => {
     let absences = noter(new Map(), 'a', 30, 0);
     absences = noter(absences, 'a', 30, 20000);
-    assert.deepEqual(attendus(absences, 20000), [{ playerId: 'a', reste: 30 }]);
+    assert.deepEqual(attendus(absences, 20000), [{ playerId: 'a', reste: 30, raison: 'coupure' }]);
   });
 });
 
@@ -97,5 +107,73 @@ describe('ce qu\'on affiche pendant l\'attente', () => {
     const texte = messageAttente([{ playerId: 'z', reste: 12 }], noms);
     assert.match(texte, /un joueur/);
     assert.doesNotMatch(texte, /\bz\b/);
+  });
+});
+
+describe('joueurs qui se taisent', () => {
+  /** Une vignette d'adversaire, telle que main.js la tient. */
+  const rival = (id, vuA, vivant = true) => ({ id, vivant, vuA });
+
+  it('laisse jouer tant que les instantanes arrivent', () => {
+    assert.deepEqual(silencieux([rival('a', 1000)], 1000 + SILENCE_MS - 1), []);
+  });
+
+  it('attend celui dont les instantanes ont cesse', () => {
+    const liste = silencieux([rival('a', 0)], SILENCE_MS);
+    assert.deepEqual(liste, [{
+      playerId: 'a',
+      reste: Math.ceil((PATIENCE_MS - SILENCE_MS) / 1000),
+      raison: 'silence',
+    }]);
+  });
+
+  it('n\'attend pas un joueur elimine, qui a toutes les raisons de se taire', () => {
+    assert.deepEqual(silencieux([rival('a', 0, false)], PATIENCE_MS - 1), []);
+  });
+
+  it('repart sans lui passe la patience : personne ne l\'eliminera, sa socket tient', () => {
+    assert.equal(silencieux([rival('a', 0)], PATIENCE_MS - 1).length, 1);
+    assert.deepEqual(silencieux([rival('a', 0)], PATIENCE_MS), []);
+  });
+
+  it('ignore une vignette qui n\'a pas encore de date', () => {
+    assert.deepEqual(silencieux([{ id: 'a', vivant: true }], 100000), []);
+  });
+});
+
+describe('les deux listes reunies', () => {
+  it('ne retient qu'
+    + 'une fois celui qui est coupe et muet, et garde l\'echeance du relais', () => {
+    const coupes = [{ playerId: 'a', reste: 12, raison: 'coupure' }];
+    const muets = [{ playerId: 'a', reste: 27, raison: 'silence' }];
+    assert.deepEqual(fusionner(coupes, muets), coupes);
+  });
+
+  it('additionne ceux qui manquent pour des raisons differentes', () => {
+    const coupes = [{ playerId: 'a', reste: 12, raison: 'coupure' }];
+    const muets = [{ playerId: 'b', reste: 27, raison: 'silence' }];
+    assert.deepEqual(fusionner(coupes, muets).map((x) => x.playerId), ['a', 'b']);
+  });
+
+  it('n\'invente rien quand tout le monde joue', () => {
+    assert.deepEqual(fusionner([], []), []);
+  });
+});
+
+describe('ce qu\'on dit d\'un silence', () => {
+  const noms = { a: 'Volga', b: 'Neva' };
+
+  it('ne parle pas de connexion perdue : on n\'en sait rien', () => {
+    const texte = messageAttente([{ playerId: 'a', reste: 27, raison: 'silence' }], noms);
+    assert.match(texte, /Plus de nouvelles de Volga/);
+    assert.doesNotMatch(texte, /Connexion perdue/);
+  });
+
+  it('reste neutre quand les deux raisons se melangent', () => {
+    const texte = messageAttente([
+      { playerId: 'a', reste: 12, raison: 'coupure' },
+      { playerId: 'b', reste: 27, raison: 'silence' },
+    ], noms);
+    assert.match(texte, /La partie attend Volga et Neva… 27 s/);
   });
 });

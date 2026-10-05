@@ -265,3 +265,40 @@ describe('l equipe', () => {
     assert.doesNotThrow(() => equipe.receive('fantome', { type: SERVER.START, seed: GRAINE }));
   });
 });
+
+describe('un adversaire artificiel pendant que la partie attend quelqu\'un', () => {
+  it('ne joue plus : son plateau ne bouge pas', () => {
+    const bot = pilote();
+    jouer(bot, { images: 60 });
+    const avant = bot.state();
+
+    for (let i = 0; i < 300; i += 1) bot.step(5000 + i * 16, true);
+
+    assert.equal(bot.state(), avant);
+  });
+
+  it('continue d\'emettre son plateau : se taire le ferait passer pour absent', () => {
+    const bot = pilote();
+    jouer(bot, { images: 60 });
+
+    const messages = [];
+    for (let i = 0; i < 300; i += 1) messages.push(...bot.step(5000 + i * 16, true));
+
+    // Cinq par seconde, sur les 4,8 s simulees.
+    assert.ok(messages.length >= 20, `trop peu d'instantanes : ${messages.length}`);
+    assert.ok(messages.every(({ message }) => message.type === CLIENT.BOARD));
+  });
+
+  it('ne rattrape pas l\'attente au degel', () => {
+    const bot = pilote();
+    jouer(bot, { images: 60 });
+
+    // Dix secondes d'attente, puis une seule image de jeu : s'il avait garde
+    // son horloge d'avant le gel, sa piece tomberait jusqu'en bas d'un coup.
+    for (let i = 0; i < 600; i += 1) bot.step(5000 + i * 16, true);
+    const avant = bot.state();
+    bot.step(5000 + 600 * 16 + 16);
+
+    assert.ok(bot.state().current.y - avant.current.y <= 1);
+  });
+});

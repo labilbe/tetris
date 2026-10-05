@@ -87,11 +87,14 @@ export function createBotClients({ url, code, adresse, delai, alea = Math.random
      * Appele depuis la boucle de rendu : ils vivent sur la meme image que le
      * jeu, sans seconde horloge, et gelent avec elle si l'onglet passe en
      * arriere-plan — ce qui est le comportement souhaitable.
+     *
+     * `gele` les met en attente avec la partie, sans les faire taire : voir
+     * leur `step`.
      */
-    tick(nowMs) {
+    tick(nowMs, gele = false) {
       for (const { pilote, socket } of clients) {
         if (socket.readyState !== WebSocket.OPEN) continue;
-        for (const { message } of pilote.step(nowMs)) socket.send(encode(message));
+        for (const { message } of pilote.step(nowMs, gele)) socket.send(encode(message));
       }
     },
 

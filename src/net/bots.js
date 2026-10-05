@@ -145,13 +145,28 @@ export function createBotPilot({
      * Un pas du pilote : le temps avance, puis on agit s'il est l'heure.
      *
      * @param {number} nowMs horloge de la boucle de rendu
+     * @param {boolean} [gele] la partie attend un joueur : il patiente avec elle
      * @returns {{ from: string, message: object }[]} ce qu'il emet
      */
-    step(nowMs) {
+    step(nowMs, gele = false) {
       if (!state || defaiteSignalee) return [];
 
       const delta = horloge === 0 ? 0 : nowMs - horloge;
       horloge = nowMs;
+
+      // Gele, il ne joue pas — mais son horloge suit quand meme, sans quoi il
+      // rattraperait d'un coup, au degel, toutes les secondes d'attente.
+      //
+      // Et il continue d'emettre son plateau : un instantane est la preuve
+      // qu'un joueur est toujours la. Un adversaire artificiel muet serait
+      // tenu pour absent par les autres, qui l'attendraient a leur tour — et
+      // comme c'est le gel qui l'a fait taire, la partie s'attendrait
+      // elle-meme jusqu'a l'echeance.
+      if (gele) {
+        if (nowMs - dernierInstantane < boardMs) return [];
+        dernierInstantane = nowMs;
+        return [{ from: id, message: { type: CLIENT.BOARD, board: encodeBoard(state) } }];
+      }
 
       state = tick(state, delta);
 
