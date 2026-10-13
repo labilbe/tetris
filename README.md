@@ -101,9 +101,10 @@ Le plateau lui-même écoute les doigts, et c'est souvent plus direct que les bo
 | Glisser latéralement | La pièce suit le doigt, case par case |
 | Glisser vers le bas | La pièce descend, case par case |
 | Taper sur la pièce | Rotation |
-| Taper deux fois | Chute rapide |
 
-L'axe se fixe au premier mouvement : un déplacement latéral ne fait jamais descendre la pièce au passage. Taper ailleurs que sur la pièce ne fait rien — c'est ce qui laisse la double tape sans ambiguïté.
+L'axe se fixe au premier mouvement : un déplacement latéral ne fait jamais descendre la pièce au passage. Taper ailleurs que sur la pièce ne fait rien.
+
+La chute rapide reste au bouton large du pavé, en bas. Elle a d'abord été une double tape sur la grille, et c'était une erreur : tourner deux fois de suite lâchait la pièce. Un geste qui la pose pour de bon ne peut pas partager son vocabulaire avec celui qu'on répète le plus.
 
 L'écran de pause propose « Reprendre » et « Retour au menu ». En fin de partie, seul le retour au menu subsiste — c'est là qu'on rechoisit le mode et qu'on relance une partie.
 

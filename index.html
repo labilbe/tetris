@@ -45,7 +45,10 @@
         <button type="button" data-action="rotate" aria-label="Rotation">⟳</button>
         <button type="button" data-action="right" aria-label="Déplacer à droite">→</button>
         <button type="button" data-action="soft" aria-label="Descente douce">↓</button>
-        <button type="button" data-action="hard" aria-label="Chute rapide">⤓</button>
+        <!-- Le seul bouton nomme : la chute rapide pose la piece pour de bon,
+             et c'est le geste qu'on ne doit pas declencher par erreur. Le
+             plateau, lui, ne la propose plus (voir src/input/gestures.js). -->
+        <button type="button" data-action="hard" aria-label="Chute rapide">⤓ Chute</button>
       </div>
     </div>
 

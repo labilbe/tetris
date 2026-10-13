@@ -10,8 +10,12 @@
  *
  *   - un doigt glisse lateralement : la piece suit, case par case ;
  *   - un doigt glisse vers le bas : la piece descend, case par case ;
- *   - une tape sur la piece : elle tourne ;
- *   - deux tapes de suite : chute rapide.
+ *   - une tape sur la piece : elle tourne.
+ *
+ * La chute rapide n'est pas ici : elle reste au bouton du pave, en bas. Elle y
+ * a d'abord ete une double tape, et c'etait une erreur — tourner deux fois de
+ * suite lachait la piece. Un geste qui pose la piece pour de bon ne peut pas
+ * partager son vocabulaire avec celui qu'on repete le plus.
  *
  * Deux parties ici : une machine pure, qui ne connait que des points et rend
  * des actions, et le cablage aux evenements du pointeur. La premiere se teste
@@ -22,9 +26,6 @@ import { COLS, ROWS } from '../engine/constants.js';
 
 /** Au-dela, l'appui n'est plus une tape mais un doigt pose. */
 const TAP_MS = 250;
-
-/** Deux tapes separees par moins que cela n'en font qu'une : la double. */
-const DOUBLE_TAP_MS = 320;
 
 /**
  * Fraction de case a parcourir avant qu'un appui devienne un glissement.
@@ -41,10 +42,8 @@ const SEUIL = .4;
  * envoyer. Les coordonnees sont en pixels depuis le coin haut gauche du
  * plateau, et `t` en millisecondes.
  *
- * Elle vit aussi longtemps que la partie, et surtout plus longtemps qu'un
- * geste : c'est elle qui se souvient de la tape precedente, sans quoi la double
- * tape ne se formerait jamais. La taille des cases est donc relue a chaque
- * debut plutot que fixee une fois — le plateau change de taille avec l'ecran.
+ * La taille des cases est relue a chaque debut plutot que fixee une fois : le
+ * plateau change de taille avec l'ecran.
  *
  * @param {object} options
  * @param {() => { celluleX: number, celluleY: number }} options.mesurer taille
@@ -59,7 +58,6 @@ export function createGestes({ mesurer, surLaPiece }) {
   let axe = null;
   /** Nombre de cases deja envoyees sur cet axe, pour n'en envoyer aucune deux fois. */
   let envoyees = 0;
-  let derniereTape = null;
 
   let celluleX = 0;
   let celluleY = 0;
@@ -118,20 +116,11 @@ export function createGestes({ mesurer, surLaPiece }) {
     // sans bouger ne demande rien.
     if (!commence || glisse || point.t - commence.t > TAP_MS) return [];
 
-    // « !== null » et non la verite de la valeur : une premiere tape a l'instant
-    // zero est une tape comme les autres.
-    if (derniereTape !== null && point.t - derniereTape <= DOUBLE_TAP_MS) {
-      derniereTape = null;
-      return [{ type: 'hardDrop' }];
-    }
-
-    derniereTape = point.t;
-
     /*
-     * La tape ne fait tourner que sur la piece elle-meme : ailleurs, elle ne
-     * fait rien, et c'est ce qui laisse la double tape sans ambiguite. Deux
-     * tapes sur la piece la font donc tourner avant de la lacher — le prix d'une
-     * rotation immediate, qu'il aurait fallu retarder du delai de la double.
+     * La tape ne fait tourner que sur la piece elle-meme : c'est ce qu'on vise
+     * quand on veut la tourner, et ailleurs sur la grille une tape ne veut rien
+     * dire. Elle tourne tout de suite et autant de fois qu'on la repete : rien
+     * d'autre n'attend derriere pour lui disputer le geste.
      */
     const colonne = Math.floor(commence.x / celluleX);
     const ligne = Math.floor(commence.y / celluleY);

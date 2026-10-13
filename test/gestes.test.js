@@ -4,8 +4,8 @@
  * La machine est pure : on lui donne des points, elle rend des actions. C'est
  * ce qui permet de verifier ici ce qu'aucun essai au doigt ne verifierait deux
  * fois de suite — qu'un glissement ne compte jamais deux fois la meme case,
- * qu'une derive verticale ne fait pas descendre la piece qu'on deplace, et que
- * la double tape ne se confond pas avec deux rotations.
+ * qu'une derive verticale ne fait pas descendre la piece qu'on deplace, et
+ * qu'une tape repetee tourne a chaque fois.
  */
 
 import assert from 'node:assert/strict';
@@ -95,7 +95,7 @@ describe('tape', () => {
     assert.deepEqual(gestes.fin(point(4, 0, 100)), [{ type: 'rotate' }]);
   });
 
-  it('ne fait rien ailleurs : c est ce qui laisse la double tape sans ambiguite', () => {
+  it('ne fait rien ailleurs sur la grille', () => {
     const gestes = machine();
     gestes.debut(point(1, 15, 0));
 
@@ -118,54 +118,37 @@ describe('tape', () => {
   });
 });
 
-describe('double tape', () => {
-  it('lache la piece', () => {
+describe('tape repetee', () => {
+  it('tourne autant de fois qu on tape, sans jamais lacher la piece', () => {
+    // La chute rapide a d'abord ete une double tape : tourner deux fois de
+    // suite posait la piece. Elle est repartie au bouton du pave.
     const gestes = machine();
-    gestes.debut(point(1, 15, 0));
-    gestes.fin(point(1, 15, 60));
-    gestes.debut(point(1, 15, 150));
 
-    assert.deepEqual(gestes.fin(point(1, 15, 200)), [{ type: 'hardDrop' }]);
+    gestes.debut(point(4, 0, 0));
+    assert.deepEqual(gestes.fin(point(4, 0, 40)), [{ type: 'rotate' }]);
+
+    gestes.debut(point(4, 0, 100));
+    assert.deepEqual(gestes.fin(point(4, 0, 140)), [{ type: 'rotate' }]);
+
+    gestes.debut(point(4, 0, 200));
+    assert.deepEqual(gestes.fin(point(4, 0, 240)), [{ type: 'rotate' }]);
   });
 
-  it('relit la taille des cases a chaque geste, sans oublier la tape precedente', () => {
-    // Les deux vont ensemble : le plateau change de taille avec l'ecran, mais
-    // une machine neuve a chaque doigt pose ne verrait que des premieres tapes
-    // et la double n'existerait jamais.
+  it('relit la taille des cases a chaque geste', () => {
+    // Le plateau change de taille avec l'ecran : une geometrie figee a la
+    // premiere mesure viserait la mauvaise case apres une rotation d'ecran.
     let mesures = 0;
     const gestes = createGestes({
       mesurer: () => { mesures++; return { celluleX: CELLULE, celluleY: CELLULE }; },
-      surLaPiece: () => false,
+      surLaPiece: () => true,
     });
 
     gestes.debut(point(1, 15, 0));
     gestes.fin(point(1, 15, 60));
     gestes.debut(point(1, 15, 150));
+    gestes.fin(point(1, 15, 200));
 
-    assert.deepEqual(gestes.fin(point(1, 15, 200)), [{ type: 'hardDrop' }]);
     assert.equal(mesures, 2);
-  });
-
-  it('laisse passer deux tapes trop espacees', () => {
-    const gestes = machine();
-    gestes.debut(point(1, 15, 0));
-    gestes.fin(point(1, 15, 60));
-    gestes.debut(point(1, 15, 900));
-
-    assert.deepEqual(gestes.fin(point(1, 15, 950)), []);
-  });
-
-  it('ne lache pas deux fois de suite sur trois tapes', () => {
-    // La deuxieme tape a ete consommee par la premiere chute : la troisieme
-    // repart a zero, sans quoi une rafale de tapes viderait le plateau.
-    const gestes = machine();
-    gestes.debut(point(1, 15, 0));
-    gestes.fin(point(1, 15, 40));
-    gestes.debut(point(1, 15, 100));
-    assert.deepEqual(gestes.fin(point(1, 15, 140)), [{ type: 'hardDrop' }]);
-
-    gestes.debut(point(1, 15, 200));
-    assert.deepEqual(gestes.fin(point(1, 15, 240)), []);
   });
 });
 
