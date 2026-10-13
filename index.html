@@ -21,20 +21,6 @@
 </head>
 <body>
   <main class="game">
-    <!-- Le multiplex garde sa colonne meme en solo, ou il est simplement
-         invisible : la faire apparaitre au passage en reseau decalerait tout le
-         plateau, exactement comme la ligne « En jeu » du panneau. -->
-    <section class="rival multi-only" aria-label="Plateau d'un adversaire">
-      <h2>Multiplex</h2>
-      <div class="rival-head">
-        <button type="button" id="rival-prev" aria-label="Joueur précédent">‹</button>
-        <span id="rival-name">—</span>
-        <button type="button" id="rival-next" aria-label="Joueur suivant">›</button>
-      </div>
-      <canvas id="rival" width="100" height="200" aria-label="Plateau de l'adversaire regardé"></canvas>
-      <button type="button" id="rival-auto" class="rival-auto" aria-pressed="true">Auto</button>
-    </section>
-
     <!-- Le pave reste sous le plateau, en colonne comme en ligne : ailleurs, il
          formerait une troisieme colonne et elargirait toute la boite. -->
     <div class="board-column">
@@ -93,6 +79,24 @@
         </ul>
       </section>
     </aside>
+
+    <!-- Le multiplex vient apres le plateau et le panneau, et c'est l'ordre
+         qui compte : sur un telephone, la pile verticale suit le document, et
+         on vient d'abord jouer. Sur grand ecran, il reprend sa place a gauche
+         par « order » (voir style.css) — la ou le regard a de la place pour
+         lui. Il garde sa colonne meme en solo, ou il est simplement invisible :
+         la faire apparaitre au passage en reseau decalerait tout le plateau,
+         exactement comme la ligne « En jeu » du panneau. -->
+    <section class="rival multi-only" aria-label="Plateau d'un adversaire">
+      <h2>Multiplex</h2>
+      <div class="rival-head">
+        <button type="button" id="rival-prev" aria-label="Joueur précédent">‹</button>
+        <span id="rival-name">—</span>
+        <button type="button" id="rival-next" aria-label="Joueur suivant">›</button>
+      </div>
+      <canvas id="rival" width="100" height="200" aria-label="Plateau de l'adversaire regardé"></canvas>
+      <button type="button" id="rival-auto" class="rival-auto" aria-pressed="true">Auto</button>
+    </section>
 
     <div id="menu" class="overlay menu">
       <!--

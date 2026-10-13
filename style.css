@@ -431,7 +431,10 @@ kbd {
      declaration qui l'emportait — le multiplex gardait donc ses 293 px au
      dessus du plateau, invisibles, en solo comme en reseau. */
   .game .rival { display: none; }
-  .game.multi .rival { display: flex; width: 300px; }
+  /* En colonne, la vignette reprend sa place de la page : tout en bas. Le
+     plateau est ce qu'on doit voir en arrivant, et regarder jouer les autres
+     vient apres — c'est d'ailleurs ce que fait deja le panneau. */
+  .game.multi .rival { display: flex; width: 300px; order: 0; }
   .game.multi .rival .rival-head { justify-self: center; }
 
   /*
@@ -488,6 +491,9 @@ kbd {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  /* Ecrit en dernier dans la page — on vient d'abord jouer —, mais affiche en
+     premier ici : en ligne, la vignette est la colonne de gauche. */
+  order: -1;
 }
 
 .rival-head {
