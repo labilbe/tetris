@@ -439,10 +439,31 @@ kbd {
   .overlay {
     position: fixed;
     border-radius: 0;
+    /*
+     * Un element fixe se cale sur le viewport large — celui qu'on aurait si la
+     * barre d'adresse etait repliee —, et se centrerait donc un peu plus bas
+     * que le milieu de ce qu'on voit. dvh suit la hauteur reellement visible ;
+     * avec top: 0 deja pose par inset, la hauteur l'emporte sur bottom.
+     */
+    height: 100dvh;
     /* Une marge si le contenu frole la hauteur de l'ecran, et du defilement
        plutot qu'un rognage s'il la depasse. */
     padding: 16px;
     overflow-y: auto;
+  }
+
+  /*
+   * Rien a faire defiler tant qu'un calque couvre l'ecran.
+   *
+   * La boite du jeu, en colonne, est plus haute que l'ecran : la page restait
+   * donc defilable derriere le menu, avec sa barre de defilement, alors qu'il
+   * n'y a rien a y voir. Le verrou ne vaut qu'ici, ou le calque est fixe et
+   * donc toujours entier a l'ecran : ailleurs il pourrait rendre inaccessible
+   * un calque qui, lui, suit la boite.
+   */
+  html:has(.overlay:not([hidden])),
+  body:has(.overlay:not([hidden])) {
+    overflow: hidden;
   }
 }
 
