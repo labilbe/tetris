@@ -15,9 +15,8 @@ import { createGestes } from '../src/input/gestures.js';
 
 const CELLULE = 30;
 
-/** La piece occupe la case (4, 0) : de quoi distinguer « sur la piece » du reste. */
-function machine({ surLaPiece = (colonne, ligne) => colonne === 4 && ligne === 0 } = {}) {
-  return createGestes({ mesurer: () => ({ celluleX: CELLULE, celluleY: CELLULE }), surLaPiece });
+function machine() {
+  return createGestes({ mesurer: () => ({ celluleX: CELLULE, celluleY: CELLULE }) });
 }
 
 /** Un point au centre d'une case, a l'instant donne. */
@@ -88,18 +87,16 @@ describe('glissement vers le bas', () => {
 });
 
 describe('tape', () => {
-  it('fait tourner la piece quand elle tombe dessus', () => {
+  it('fait tourner la piece, ou qu elle tombe sur la grille', () => {
+    // Viser du pouce une piece de trente pixels qui tombe serait un geste
+    // d'adresse, et rien d'autre n'attend derriere pour disputer la tape.
     const gestes = machine();
+
     gestes.debut(point(4, 0, 0));
-
     assert.deepEqual(gestes.fin(point(4, 0, 100)), [{ type: 'rotate' }]);
-  });
 
-  it('ne fait rien ailleurs sur la grille', () => {
-    const gestes = machine();
-    gestes.debut(point(1, 15, 0));
-
-    assert.deepEqual(gestes.fin(point(1, 15, 100)), []);
+    gestes.debut(point(1, 15, 200));
+    assert.deepEqual(gestes.fin(point(1, 15, 300)), [{ type: 'rotate' }]);
   });
 
   it('ne compte pas un doigt pose longtemps', () => {
@@ -140,7 +137,6 @@ describe('tape repetee', () => {
     let mesures = 0;
     const gestes = createGestes({
       mesurer: () => { mesures++; return { celluleX: CELLULE, celluleY: CELLULE }; },
-      surLaPiece: () => true,
     });
 
     gestes.debut(point(1, 15, 0));

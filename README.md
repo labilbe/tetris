@@ -100,9 +100,9 @@ Le plateau lui-même écoute les doigts, et c'est souvent plus direct que les bo
 | --- | --- |
 | Glisser latéralement | La pièce suit le doigt, case par case |
 | Glisser vers le bas | La pièce descend, case par case |
-| Taper sur la pièce | Rotation |
+| Taper sur la grille | Rotation |
 
-L'axe se fixe au premier mouvement : un déplacement latéral ne fait jamais descendre la pièce au passage. Taper ailleurs que sur la pièce ne fait rien.
+L'axe se fixe au premier mouvement : un déplacement latéral ne fait jamais descendre la pièce au passage. La tape, elle, vaut partout sur la grille — viser du pouce une pièce de trente pixels qui tombe serait un geste d'adresse, et rien d'autre n'attend derrière pour la disputer.
 
 La chute rapide, elle, reste au bouton sous le plateau. Elle a d'abord été une double tape sur la grille, et c'était une erreur : tourner deux fois de suite lâchait la pièce. Un geste qui la pose pour de bon ne peut pas partager son vocabulaire avec celui qu'on répète le plus.
 

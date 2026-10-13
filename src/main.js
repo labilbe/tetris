@@ -83,7 +83,7 @@ function updatePad() {
   game.classList.toggle('with-pad', visible);
 
   if (visible && !detacherGestes) {
-    detacherGestes = createBoardGestures({ board, getState: () => state, onGameAction: dispatch });
+    detacherGestes = createBoardGestures({ board, onGameAction: dispatch });
   } else if (!visible && detacherGestes) {
     detacherGestes();
     detacherGestes = null;

@@ -10,7 +10,7 @@
  *
  *   - un doigt glisse lateralement : la piece suit, case par case ;
  *   - un doigt glisse vers le bas : la piece descend, case par case ;
- *   - une tape sur la piece : elle tourne.
+ *   - une tape, ou qu'elle tombe : la piece tourne.
  *
  * La chute rapide n'est pas ici : elle reste au bouton du pave, en bas. Elle y
  * a d'abord ete une double tape, et c'etait une erreur — tourner deux fois de
@@ -49,10 +49,9 @@ const SEUIL = .4;
  * @param {() => { celluleX: number, celluleY: number }} options.mesurer taille
  *   d'une case a l'ecran ; la hauteur differe de la largeur, le plateau n'etant
  *   pas toujours affiche dans ses proportions exactes
- * @param {(colonne: number, ligne: number) => boolean} options.surLaPiece
  * @returns {{ debut: Function, bouge: Function, fin: Function, annule: Function }}
  */
-export function createGestes({ mesurer, surLaPiece }) {
+export function createGestes({ mesurer }) {
   let depart = null;
   /** Axe retenu pour ce glissement : 'x', 'y', ou null tant qu'on hesite. */
   let axe = null;
@@ -117,14 +116,12 @@ export function createGestes({ mesurer, surLaPiece }) {
     if (!commence || glisse || point.t - commence.t > TAP_MS) return [];
 
     /*
-     * La tape ne fait tourner que sur la piece elle-meme : c'est ce qu'on vise
-     * quand on veut la tourner, et ailleurs sur la grille une tape ne veut rien
-     * dire. Elle tourne tout de suite et autant de fois qu'on la repete : rien
-     * d'autre n'attend derriere pour lui disputer le geste.
+     * N'importe ou sur la grille, et non sur la piece seulement : viser du
+     * pouce une piece de trente pixels qui tombe est un geste d'adresse, et
+     * rien d'autre n'attend derriere pour disputer la tape. Elle tourne tout de
+     * suite, et autant de fois qu'on la repete.
      */
-    const colonne = Math.floor(commence.x / celluleX);
-    const ligne = Math.floor(commence.y / celluleY);
-    return surLaPiece(colonne, ligne) ? [{ type: 'rotate' }] : [];
+    return [{ type: 'rotate' }];
   }
 
   /** Doigt perdu (appel systeme, fenetre quittee) : le geste n'a pas eu lieu. */
@@ -143,33 +140,20 @@ export function createGestes({ mesurer, surLaPiece }) {
  *
  * @param {object} options
  * @param {HTMLCanvasElement} options.board
- * @param {() => object | undefined} options.getState pour savoir ou est la piece
  * @param {(action: object) => void} options.onGameAction
  * @returns {() => void} fonction de detachement
  */
-export function createBoardGestures({ board, getState, onGameAction }) {
+export function createBoardGestures({ board, onGameAction }) {
   let doigt = null;
   let cadre = null;
 
-  /** La piece couvre-t-elle cette case ? */
-  function surLaPiece(colonne, ligne) {
-    const piece = getState()?.current;
-    if (!piece) return false;
-    return Boolean(piece.cells[ligne - piece.y]?.[colonne - piece.x]);
-  }
-
   /*
-   * Une seule machine pour toute la partie, et non une par geste : c'est elle
-   * qui se souvient de la tape precedente, et une machine neuve a chaque doigt
-   * pose ne verrait jamais que des premieres tapes.
-   *
    * Le cadre est relu a chaque doigt pose : le canvas garde ses 300x600
    * internes mais s'affiche a la taille que lui laisse l'ecran, et c'est la
    * taille affichee que le doigt parcourt.
    */
   const gestes = createGestes({
     mesurer: () => ({ celluleX: cadre.width / COLS, celluleY: cadre.height / ROWS }),
-    surLaPiece,
   });
 
   function point(event) {
