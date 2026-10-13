@@ -66,8 +66,11 @@ canvas {
   touch-action: none;
 }
 
+/* Le pave ne porte plus qu'un bouton : 56 px de bouton, l'ecart qui le separe
+   du plateau et les marges de la boite. Les 200 px d'avant valaient pour deux
+   rangees, et le plateau les perdait pour rien. */
 .game.with-pad {
-  --reserve: 200px;
+  --reserve: 130px;
 }
 
 .panel {
@@ -146,7 +149,6 @@ button:hover { filter: brightness(1.1); }
    touch-action, l'appui fait defiler ou zoomer la page. */
 .pad {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
   gap: 8px;
   /* Large comme le plateau, jamais comme la boite entiere. */
   width: 300px;
@@ -175,9 +177,6 @@ button:hover { filter: brightness(1.1); }
 
 .pad button:hover { filter: none; }
 
-/* La chute rapide occupe toute la largeur : c'est le geste decisif. */
-.pad button[data-action="soft"] { grid-column: span 1; }
-.pad button[data-action="hard"] { grid-column: span 2; }
 
 .help ul {
   margin: 0;

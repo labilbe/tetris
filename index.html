@@ -40,14 +40,11 @@
     <div class="board-column">
       <canvas id="board" width="300" height="600" aria-label="Plateau de jeu"></canvas>
 
+      <!-- Un seul bouton, et c'est voulu : deplacer, tourner et descendre se
+           font au doigt sur la grille (src/input/gestures.js). Seule la chute
+           rapide reste un bouton — elle pose la piece pour de bon, et c'est le
+           geste qu'on ne doit pas declencher par erreur. -->
       <div class="pad" id="pad" hidden>
-        <button type="button" data-action="left" aria-label="Déplacer à gauche">←</button>
-        <button type="button" data-action="rotate" aria-label="Rotation">⟳</button>
-        <button type="button" data-action="right" aria-label="Déplacer à droite">→</button>
-        <button type="button" data-action="soft" aria-label="Descente douce">↓</button>
-        <!-- Le seul bouton nomme : la chute rapide pose la piece pour de bon,
-             et c'est le geste qu'on ne doit pas declencher par erreur. Le
-             plateau, lui, ne la propose plus (voir src/input/gestures.js). -->
         <button type="button" data-action="hard" aria-label="Chute rapide">⤓ Chute</button>
       </div>
     </div>

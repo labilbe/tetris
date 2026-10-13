@@ -92,7 +92,7 @@ Ce menu joue un second rôle : le clic qui lance la partie est aussi le geste qu
 | Maj+← / → | Multijoueur : regarder un autre joueur |
 | A | Multijoueur : rendre la main à la réalisation automatique |
 
-Sur écran tactile — ou dans une fenêtre étroite — un pavé de commandes apparaît sous le plateau : déplacer, tourner, descendre, chute rapide. Maintenir le doigt sur une flèche répète le déplacement, comme une touche enfoncée.
+Sur écran tactile — ou dans une fenêtre étroite — un seul bouton apparaît sous le plateau : la chute rapide. Tout le reste se joue au doigt, sur la grille elle-même.
 
 Le plateau lui-même écoute les doigts, et c'est souvent plus direct que les boutons :
 
@@ -104,7 +104,7 @@ Le plateau lui-même écoute les doigts, et c'est souvent plus direct que les bo
 
 L'axe se fixe au premier mouvement : un déplacement latéral ne fait jamais descendre la pièce au passage. Taper ailleurs que sur la pièce ne fait rien.
 
-La chute rapide reste au bouton large du pavé, en bas. Elle a d'abord été une double tape sur la grille, et c'était une erreur : tourner deux fois de suite lâchait la pièce. Un geste qui la pose pour de bon ne peut pas partager son vocabulaire avec celui qu'on répète le plus.
+La chute rapide, elle, reste au bouton sous le plateau. Elle a d'abord été une double tape sur la grille, et c'était une erreur : tourner deux fois de suite lâchait la pièce. Un geste qui la pose pour de bon ne peut pas partager son vocabulaire avec celui qu'on répète le plus.
 
 L'écran de pause propose « Reprendre » et « Retour au menu ». En fin de partie, seul le retour au menu subsiste — c'est là qu'on rechoisit le mode et qu'on relance une partie.
 
