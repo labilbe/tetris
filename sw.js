@@ -22,7 +22,7 @@
  * modules de deux versions tomberait en panne de la facon la plus obscure qui
  * soit.
  */
-const CACHE = 'tetris-v9';
+const CACHE = 'tetris-v10';
 
 /**
  * Tout ce qu'il faut pour jouer, relu au premier chargement.

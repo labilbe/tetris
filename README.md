@@ -133,7 +133,7 @@ src/
     hud.js        score, niveau, overlay pause / fin de partie
   input/
     keyboard.js   traduit les touches en actions
-    touch.js      traduit les appuis du pavé tactile en actions
+    touch.js      le bouton de chute rapide, sous le plateau
     gestures.js   traduit les gestes sur le plateau en actions
   audio/
     midi.js       lecteur de fichier MIDI, sans dépendance
