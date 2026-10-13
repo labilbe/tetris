@@ -60,6 +60,10 @@ canvas {
 #board {
   height: min(600px, calc(100dvh - var(--reserve, 64px)));
   width: auto;
+  /* Le plateau ecoute les doigts (voir src/input/gestures.js) : sans cela, le
+     navigateur prendrait le glissement pour un defilement et le jeu ne verrait
+     qu'un geste deja confisque. Le reste de la page defile toujours. */
+  touch-action: none;
 }
 
 .game.with-pad {

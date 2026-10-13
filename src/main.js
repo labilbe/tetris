@@ -7,6 +7,7 @@ import { createMusic } from './audio/music.js';
 import { STATUS } from './engine/constants.js';
 import { createState, reduce, tick } from './engine/state.js';
 import { createKeyboardInput } from './input/keyboard.js';
+import { createBoardGestures } from './input/gestures.js';
 import { createTouchInput } from './input/touch.js';
 import { attendus, fusionner, messageAttente, noter, oublier, silencieux } from './net/absences.js';
 import { createBotClients } from './net/bot-client.js';
@@ -22,8 +23,10 @@ import { DANGER, automatique, cadrer, createCamera, viser } from './view/camera.
 import { brancherInstallation, enregistrerServiceWorker } from './view/installation.js';
 import { readPreference, readTextPreference, writePreference } from './view/preferences.js';
 
+const board = document.getElementById('board');
+
 const renderer = createRenderer({
-  board: document.getElementById('board'),
+  board,
   next: document.getElementById('next'),
 });
 
@@ -65,11 +68,26 @@ const rivalAuto = document.getElementById('rival-auto');
 const COARSE = matchMedia('(pointer: coarse)');
 const NARROW = matchMedia('(max-width: 700px)');
 
+/**
+ * Les gestes sur le plateau n'existent que la ou le pave existe.
+ *
+ * Ailleurs, on joue a la souris : un clic sur la grille y ferait tourner la
+ * piece sans qu'on l'ait demande, et un cliquer-glisser la deplacerait.
+ */
+let detacherGestes = null;
+
 /** Le pave tactile occupe le bas de la colonne : le plateau lui laisse la place. */
 function updatePad() {
   const visible = COARSE.matches || NARROW.matches;
   pad.hidden = !visible;
   game.classList.toggle('with-pad', visible);
+
+  if (visible && !detacherGestes) {
+    detacherGestes = createBoardGestures({ board, getState: () => state, onGameAction: dispatch });
+  } else if (!visible && detacherGestes) {
+    detacherGestes();
+    detacherGestes = null;
+  }
 }
 
 const GHOST_PREFERENCE = 'tetris.ghost';

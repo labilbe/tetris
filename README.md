@@ -94,6 +94,17 @@ Ce menu joue un second rôle : le clic qui lance la partie est aussi le geste qu
 
 Sur écran tactile — ou dans une fenêtre étroite — un pavé de commandes apparaît sous le plateau : déplacer, tourner, descendre, chute rapide. Maintenir le doigt sur une flèche répète le déplacement, comme une touche enfoncée.
 
+Le plateau lui-même écoute les doigts, et c'est souvent plus direct que les boutons :
+
+| Geste | Effet |
+| --- | --- |
+| Glisser latéralement | La pièce suit le doigt, case par case |
+| Glisser vers le bas | La pièce descend, case par case |
+| Taper sur la pièce | Rotation |
+| Taper deux fois | Chute rapide |
+
+L'axe se fixe au premier mouvement : un déplacement latéral ne fait jamais descendre la pièce au passage. Taper ailleurs que sur la pièce ne fait rien — c'est ce qui laisse la double tape sans ambiguïté.
+
 L'écran de pause propose « Reprendre » et « Retour au menu ». En fin de partie, seul le retour au menu subsiste — c'est là qu'on rechoisit le mode et qu'on relance une partie.
 
 ## Règles
@@ -122,6 +133,7 @@ src/
   input/
     keyboard.js   traduit les touches en actions
     touch.js      traduit les appuis du pavé tactile en actions
+    gestures.js   traduit les gestes sur le plateau en actions
   audio/
     midi.js       lecteur de fichier MIDI, sans dépendance
     music.js      synthèse Web Audio, calée sur l'état du jeu
