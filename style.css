@@ -425,6 +425,25 @@ kbd {
   .rival { display: none; }
   .game.multi .rival { display: flex; width: 300px; }
   .game.multi .rival .rival-head { justify-self: center; }
+
+  /*
+   * En colonne, la boite est plus haute que l'ecran : le plateau prend deja
+   * toute la hauteur et le panneau s'empile dessous. Un calque cale sur la
+   * boite (position: absolute) se centre donc dans cette hauteur-la, c'est-a-
+   * dire bien plus bas que ce qu'on voit — sur telephone, le menu s'affichait
+   * tout en bas. Fixe, il se centre sur l'ecran lui-meme.
+   *
+   * Le coin arrondi part avec : le calque ne suit plus les bords de la boite,
+   * il couvre tout l'ecran.
+   */
+  .overlay {
+    position: fixed;
+    border-radius: 0;
+    /* Une marge si le contenu frole la hauteur de l'ecran, et du defilement
+       plutot qu'un rognage s'il la depasse. */
+    padding: 16px;
+    overflow-y: auto;
+  }
 }
 
 /*
