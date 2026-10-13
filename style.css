@@ -421,8 +421,13 @@ kbd {
 
   /* En colonne, reserver la place du multiplex couterait 200 px de hauteur a
      toute partie solo. Ici il n'apparait donc qu'en reseau : le decalage qu'on
-     evite sur grand ecran n'a pas de sens dans une pile verticale. */
-  .rival { display: none; }
+     evite sur grand ecran n'a pas de sens dans une pile verticale.
+
+     « .game .rival » et non « .rival » : la vignette est declaree display:
+     flex plus bas dans ce fichier, a specificite egale, et c'est la derniere
+     declaration qui l'emportait — le multiplex gardait donc ses 293 px au
+     dessus du plateau, invisibles, en solo comme en reseau. */
+  .game .rival { display: none; }
   .game.multi .rival { display: flex; width: 300px; }
   .game.multi .rival .rival-head { justify-self: center; }
 
