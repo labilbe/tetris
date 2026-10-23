@@ -104,6 +104,18 @@ Le plateau lui-même écoute les doigts, et c'est souvent plus direct que les bo
 
 L'axe se fixe au premier mouvement : un déplacement latéral ne fait jamais descendre la pièce au passage. La tape, elle, vaut partout sur la grille — viser du pouce une pièce de trente pixels qui tombe serait un geste d'adresse, et rien d'autre n'attend derrière pour la disputer.
 
+Une manette branchée joue aussi, sans rien régler :
+
+| Manette | Action |
+| --- | --- |
+| Premier bouton (A, croix) | Rotation |
+| Deuxième bouton (B, rond) | Chute rapide |
+| Croix directionnelle ou stick gauche | Déplacer la pièce, et la faire descendre |
+
+Les directions se répètent tant qu’on reste poussé, après une courte attente — le temps de pouvoir n’avancer que d’une case en tapotant. Les deux boutons, non : une rotation, et surtout une chute, qui se répéteraient seules lâcheraient la pièce avant qu’on ait relâché.
+
+Une manette ne prévient de rien : le navigateur ne donne que son état courant, quand on le demande. Le jeu l’interroge donc à chaque image — mais seulement une fois qu’une manette s’est annoncée, pour ne rien coûter à une page jouée au clavier.
+
 La chute rapide, elle, reste au bouton sous le plateau. Elle a d'abord été une double tape sur la grille, et c'était une erreur : tourner deux fois de suite lâchait la pièce. Un geste qui la pose pour de bon ne peut pas partager son vocabulaire avec celui qu'on répète le plus.
 
 L'écran de pause propose « Reprendre » et « Retour au menu ». En fin de partie, seul le retour au menu subsiste — c'est là qu'on rechoisit le mode et qu'on relance une partie.
@@ -133,6 +145,7 @@ src/
     hud.js        score, niveau, overlay pause / fin de partie
   input/
     keyboard.js   traduit les touches en actions
+    gamepad.js    traduit les manettes en actions, en les interrogeant
     touch.js      le bouton de chute rapide, sous le plateau
     gestures.js   traduit les gestes sur le plateau en actions
   audio/

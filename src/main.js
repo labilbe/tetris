@@ -7,6 +7,7 @@ import { createMusic } from './audio/music.js';
 import { STATUS } from './engine/constants.js';
 import { createState, reduce, tick } from './engine/state.js';
 import { createKeyboardInput } from './input/keyboard.js';
+import { createGamepadInput } from './input/gamepad.js';
 import { createBoardGestures } from './input/gestures.js';
 import { createTouchInput } from './input/touch.js';
 import { attendus, fusionner, messageAttente, noter, oublier, silencieux } from './net/absences.js';
@@ -714,6 +715,11 @@ salonInput.addEventListener('input', () => {
 });
 
 createTouchInput({ pad, onGameAction: dispatch });
+
+// Les manettes, elles, sont toujours a l'ecoute : contrairement au pave, elles
+// ne prennent aucune place a l'ecran, et une manette posee a cote ne derange
+// personne tant qu'on n'y touche pas.
+createGamepadInput({ onGameAction: dispatch });
 
 COARSE.addEventListener('change', updatePad);
 NARROW.addEventListener('change', updatePad);

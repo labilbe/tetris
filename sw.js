@@ -22,7 +22,7 @@
  * modules de deux versions tomberait en panne de la facon la plus obscure qui
  * soit.
  */
-const CACHE = 'tetris-v12';
+const CACHE = 'tetris-v13';
 
 /**
  * Tout ce qu'il faut pour jouer, relu au premier chargement.
@@ -47,6 +47,7 @@ const FICHIERS = [
   'src/engine/constants.js',
   'src/engine/rng.js',
   'src/engine/state.js',
+  'src/input/gamepad.js',
   'src/input/gestures.js',
   'src/input/keyboard.js',
   'src/input/touch.js',
