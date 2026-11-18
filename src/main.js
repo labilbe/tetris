@@ -12,7 +12,7 @@ import { createBoardGestures } from './input/gestures.js';
 import { createTouchInput } from './input/touch.js';
 import { attendus, fusionner, messageAttente, noter, oublier, silencieux } from './net/absences.js';
 import { createBotClients } from './net/bot-client.js';
-import { drawGarbageColumns } from './net/garbage.js';
+import { drawGarbageColumns, drawLevelColumns } from './net/garbage.js';
 import { relaisUrl } from './net/relais.js';
 import { createSocketTransport } from './net/socket.js';
 import { cleanRoom, randomName, randomRoom } from './net/protocol.js';
@@ -482,17 +482,34 @@ function onNetworkStatus(status) {
 }
 
 /**
- * Envoie un handicap aux autres joueurs apres un effacement de plusieurs
- * lignes : des blocs qui leur tomberont du haut.
+ * Envoie un handicap aux autres joueurs : des blocs qui leur tomberont du haut.
+ *
+ * Deux raisons de le meriter, et le plateau d'avant suffit a les lire toutes
+ * les deux :
+ *
+ *   - un effacement de plusieurs lignes, le coup d'eclat ;
+ *   - un niveau franchi, la duree.
+ *
+ * Le second est venu corriger un silence : dix lignes effacees une par une
+ * n'envoyaient rien du tout, si bien qu'on pouvait monter tout le jeu sans
+ * jamais gener personne. Le niveau est l'autre mesure du jeu, et desormais il
+ * se paie aussi chez les autres.
+ *
+ * Un seul envoi quand les deux tombent ensemble : pour le receveur c'est une
+ * seule pluie de blocs, et pour le reseau une seule action.
  *
  * Le tirage des colonnes vit dans net/garbage.js, partage avec les adversaires
  * artificiels : ils penalisent leurs voisins par le meme canal, et il ne doit y
  * avoir qu'une seule facon de tirer un handicap dans le jeu.
  *
- * @param {number} cleared lignes effacees d'un coup
+ * @param {import('./engine/state.js').GameState} avant plateau avant l'action
+ * @param {import('./engine/state.js').GameState} apres plateau apres l'action
  */
-function sendGarbage(cleared) {
-  const columns = drawGarbageColumns(cleared);
+function sendGarbage(avant, apres) {
+  const columns = [
+    ...drawGarbageColumns(apres.lines - avant.lines),
+    ...drawLevelColumns(apres.level - avant.level),
+  ];
   if (columns.length === 0) return;
 
   dispatch({ type: 'garbage', columns });
@@ -621,9 +638,9 @@ async function startGame(mode) {
     // doivent pas piloter notre plateau.
     if (!meta.self) return;
 
-    const avant = state.lines;
+    const avant = state;
     state = reduce(state, action);
-    sendGarbage(state.lines - avant);
+    sendGarbage(avant, state);
     render();
   });
 

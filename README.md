@@ -161,7 +161,7 @@ src/
     bots.js       adversaires artificiels : la décision et le pilote
     bot-client.js chaque adversaire, branché sur le relais
     snapshot.js   instantané de plateau : ce que les autres voient de notre partie
-    garbage.js    tirage des colonnes de handicap, côté émetteur
+    garbage.js    tirage des colonnes de handicap : lignes effacées et niveaux
     absences.js   qui l'on attend — coupé, ou simplement muet — et jusqu'à quand
   view/
     preferences.js réglages locaux (projection, musique, pseudo, salon)
@@ -265,6 +265,12 @@ Effacer **au moins deux lignes d'un coup** envoie des blocs gris aux autres joue
 | 4 | 20 |
 
 Le compte est en blocs, pas en lignes : cinq blocs ne valent qu'une demi-ligne de matière, mais répartie de façon bien plus gênante qu'une ligne pleine.
+
+**Franchir un niveau en envoie dix de plus.** Un niveau se gagne en dix lignes, et dix lignes effacées une par une n'envoyaient rien du tout : on pouvait monter tout le jeu sans jamais gêner personne, et la partie se décidait uniquement sur les coups d'éclat. Le niveau est l'autre mesure du jeu — celle de la durée — et il se paie désormais aussi chez les autres.
+
+Dix blocs, autant qu'un triple : c'est une demi-ligne de matière pour dix lignes de travail. Assez pour que la montée compte, trop peu pour qu'elle remplace de viser des doubles. Un verrouillage efface au plus quatre lignes, et un niveau en demande dix : on n'en franchit donc jamais deux à la fois.
+
+**Les deux se cumulent, en un seul envoi.** Le verrouillage qui boucle un niveau *et* efface des lignes tire les blocs des deux côtés et les envoie dans une seule action : pour le receveur c'est une seule pluie, et pour le relais un seul message. Le receveur ne sait pas d'où lui vient ce qui lui tombe dessus, et il n'a pas à le savoir — un bloc est un bloc.
 
 **Un bloc tombe, il ne se glisse donc jamais sous un surplomb** : il s'arrête sur la première case occupée de sa colonne. C'est ce qui distingue ce handicap d'une ligne poussée par le bas — au lieu de décaler proprement la pile, il coiffe les puits et crée des creux inaccessibles.
 

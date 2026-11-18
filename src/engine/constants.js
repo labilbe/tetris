@@ -30,6 +30,20 @@ export const LINE_POINTS = [0, 100, 300, 500, 800];
  */
 export const GARBAGE_SENT = { 2: 5, 3: 10, 4: 20 };
 
+/**
+ * Blocs envoyes aux autres joueurs a chaque niveau franchi.
+ *
+ * Un niveau se gagne en dix lignes, et dix lignes effacees une par une
+ * n'envoyaient rien du tout : on pouvait monter tout le jeu sans jamais gener
+ * personne. Le niveau est l'autre mesure du jeu, a cote du coup d'eclat, et
+ * celle-la recompense la duree.
+ *
+ * Dix blocs, autant qu'un triple : c'est une demi-ligne de matiere pour dix
+ * lignes de travail. Assez pour que la montee compte, trop peu pour qu'elle
+ * remplace de viser des doubles.
+ */
+export const GARBAGE_PER_LEVEL = 10;
+
 /** Les blocs recus sont gris : ils ne viennent d'aucune piece. */
 export const GARBAGE_COLOR = '#6b7280';
 

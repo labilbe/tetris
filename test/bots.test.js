@@ -9,7 +9,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { STATUS } from '../src/engine/constants.js';
+import { COLS, GARBAGE_PER_LEVEL, GARBAGE_SENT, STATUS } from '../src/engine/constants.js';
 import { createState } from '../src/engine/state.js';
 import { PLAFOND_BOTS, createBotPilot, createBotTeam } from '../src/net/bots.js';
 import { BOT_NAMES, CLIENT, SERVER } from '../src/net/protocol.js';
@@ -150,6 +150,76 @@ describe('le handicap', () => {
       bot.receive({ type });
     }
     assert.equal(bot.state(), avant);
+  });
+});
+
+describe('le handicap du niveau', () => {
+  it('part au niveau franchi, en plus de celui des lignes', () => {
+    /*
+     * Le seul test du jeu qui demande une vraie partie : un niveau coute dix
+     * lignes, et aucun plateau fabrique ne les donne. On fait donc jouer un
+     * bot adroit jusqu'a ce qu'il monte, en regardant a chaque pas ce qu'il
+     * emet — c'est le pas ou son niveau change qui nous interesse.
+     */
+    const bot = createBotPilot({ id: 'bot-1', name: 'Nina', adresse: 1, alea: aleaFixe() });
+    bot.demarrer(GRAINE);
+
+    let franchi = null;
+
+    for (let i = 0; i < 4000 && !franchi; i += 1) {
+      const avant = bot.state();
+      const messages = bot.step(1000 + i * 16);
+      const apres = bot.state();
+
+      if (apres.level === avant.level) continue;
+
+      assert.equal(apres.level, avant.level + 1, 'un verrouillage ne franchit qu un niveau');
+      const handicaps = duType(messages, CLIENT.ACTION)
+        .filter((m) => m.message.action.type === 'garbage');
+
+      // Un seul envoi, meme quand le niveau et les lignes tombent ensemble :
+      // pour le receveur c'est une seule pluie de blocs.
+      assert.equal(handicaps.length, 1, 'le handicap du niveau n a pas ete envoye');
+
+      franchi = {
+        colonnes: handicaps[0].message.action.columns,
+        lignes: apres.lines - avant.lines,
+      };
+    }
+
+    assert.ok(franchi, 'le bot n a jamais atteint le niveau 2');
+
+    /*
+     * Le compte exact, et non « au moins dix » : un tetris envoie vingt blocs a
+     * lui seul, si bien qu'une inegalite passerait aussi sans la regle du
+     * niveau. C'est la somme des deux qui prouve que le niveau a bien ajoute
+     * les siens.
+     */
+    assert.equal(
+      franchi.colonnes.length,
+      (GARBAGE_SENT[franchi.lignes] ?? 0) + GARBAGE_PER_LEVEL,
+      `${franchi.colonnes.length} blocs pour ${franchi.lignes} ligne(s) et un niveau`,
+    );
+    for (const colonne of franchi.colonnes) {
+      assert.ok(Number.isInteger(colonne) && colonne >= 0 && colonne < COLS);
+    }
+  });
+
+  it('ne part pas aux verrouillages ordinaires', () => {
+    // Le cas de tous les autres pas : rien ne doit partir sous pretexte qu une
+    // piece s est posee.
+    const bot = pilote({ adresse: 1 });
+    const messages = jouer(bot, { images: 40 });
+
+    assert.equal(bot.state().level, 1, 'le bot est reste au niveau 1');
+    const handicaps = duType(messages, CLIENT.ACTION)
+      .filter((m) => m.message.action.type === 'garbage');
+
+    // Les doubles et plus envoient toujours, eux : on verifie seulement
+    // qu'aucun envoi n'excede ce que les lignes effacees justifient.
+    for (const handicap of handicaps) {
+      assert.ok(handicap.message.action.columns.length <= GARBAGE_SENT[4]);
+    }
   });
 });
 

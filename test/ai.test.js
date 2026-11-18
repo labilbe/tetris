@@ -11,10 +11,10 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { COLS, PIECES, ROWS, STATUS } from '../src/engine/constants.js';
+import { COLS, GARBAGE_PER_LEVEL, PIECES, ROWS, STATUS } from '../src/engine/constants.js';
 import { createState, reduce } from '../src/engine/state.js';
 import { choisir, evaluer, formes, placements, prochaineAction } from '../src/ai/player.js';
-import { drawGarbageColumns } from '../src/net/garbage.js';
+import { drawGarbageColumns, drawLevelColumns } from '../src/net/garbage.js';
 
 const SEED = 12345;
 
@@ -278,5 +278,28 @@ describe('tirage des colonnes de handicap', () => {
     // doit apparaitre une fois, sinon ils s'empileraient au meme endroit.
     const colonnes = drawGarbageColumns(3, createRngTest(11));
     assert.equal(new Set(colonnes).size, COLS);
+  });
+});
+
+describe('tirage des colonnes d un niveau franchi', () => {
+  it('envoie GARBAGE_PER_LEVEL blocs par niveau', () => {
+    assert.equal(drawLevelColumns(1, () => 0).length, GARBAGE_PER_LEVEL);
+    assert.equal(drawLevelColumns(2, () => 0).length, 2 * GARBAGE_PER_LEVEL);
+  });
+
+  it('n envoie rien quand aucun niveau n a ete franchi', () => {
+    // Le cas de tous les verrouillages sauf un sur dix lignes : l'appelant
+    // passe la difference de niveau sans la tester lui-meme.
+    assert.deepEqual(drawLevelColumns(0, () => 0), []);
+    assert.deepEqual(drawLevelColumns(-1, () => 0), []);
+    assert.deepEqual(drawLevelColumns(undefined, () => 0), []);
+  });
+
+  it('repartit les blocs comme ceux d un effacement', () => {
+    const colonnes = drawLevelColumns(1, createRngTest(7));
+    assert.equal(new Set(colonnes).size, COLS);
+    for (const colonne of colonnes) {
+      assert.ok(Number.isInteger(colonne) && colonne >= 0 && colonne < COLS);
+    }
   });
 });

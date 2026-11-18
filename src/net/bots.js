@@ -22,7 +22,7 @@
 import { choisir, prochaineAction } from '../ai/player.js';
 import { STATUS } from '../engine/constants.js';
 import { createState, reduce, tick } from '../engine/state.js';
-import { drawGarbageColumns } from './garbage.js';
+import { drawGarbageColumns, drawLevelColumns } from './garbage.js';
 import { BOT_NAMES, CLIENT, SERVER } from './protocol.js';
 import { encodeBoard } from './snapshot.js';
 
@@ -196,15 +196,22 @@ export function createBotPilot({
         if (state === avant) bloque += 1;
         else bloque = 0;
 
-        const gagnees = state.lines - avant.lines;
-        if (gagnees > 0) {
-          const columns = drawGarbageColumns(gagnees, alea);
-          if (columns.length > 0) {
-            messages.push({
-              from: id,
-              message: { type: CLIENT.ACTION, action: { type: 'garbage', columns } },
-            });
-          }
+        // Le handicap part des deux facons dont un joueur peut le meriter :
+        // les lignes effacees d'un coup, et le niveau franchi. Ils jouent la
+        // meme regle que nous, sans quoi ils seraient des adversaires d'un
+        // autre jeu.
+        const columns = [
+          ...drawGarbageColumns(state.lines - avant.lines, alea),
+          ...drawLevelColumns(state.level - avant.level, alea),
+        ];
+
+        // Un seul envoi, meme quand les deux se declenchent : c'est une seule
+        // pluie de blocs pour le receveur, et une seule action a transporter.
+        if (columns.length > 0) {
+          messages.push({
+            from: id,
+            message: { type: CLIENT.ACTION, action: { type: 'garbage', columns } },
+          });
         }
       }
 
